@@ -1,0 +1,153 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ================= ENUM TYPES =================
+
+enum Role {
+  STUDENT
+  ADMIN
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum SubmissionStatus {
+  PENDING
+  IN_PROGRESS
+  ACCEPTED
+  WRONG_ANSWER
+  TIME_LIMIT_EXCEEDED
+  MEMORY_LIMIT_EXCEEDED
+  RUNTIME_ERROR
+  COMPILE_ERROR
+}
+
+enum TestcaseStatus {
+  AC
+  WA
+  TLE
+  MLE
+  RE
+}
+
+// ================= MODELS =================
+
+model User {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  email     String   @unique
+  pwd       String
+  resetPasswordToken   String?
+  resetPasswordExpires DateTime?
+  role      Role     @default(STUDENT)
+  createdAt DateTime @default(now())
+
+  submissions Submission[]
+
+  @@map("users")
+}
+
+model Category {
+  id       String            @id @default(uuid()) @db.Uuid
+  name     String            @unique
+  problems ProblemCategory[]
+
+  @@map("categories")
+}
+
+model Problem {
+  id          String            @id @default(uuid()) @db.Uuid
+  title       String
+  slug        String            @unique
+  description String            @db.Text
+  difficulty  Difficulty        @default(MEDIUM)
+  timeLimit   Int               @default(1000)
+  memoryLimit Int               @default(256)
+  isActive    Boolean           @default(true)
+
+  categories  ProblemCategory[]
+  testcases   Testcase[]
+  submissions Submission[]
+
+  @@map("problems")
+}
+
+// Bảng trung gian Danh mục - Bài tập (Chính xác theo problem_categories trong ảnh)
+model ProblemCategory {
+  problemId  String @db.Uuid
+  categoryId String @db.Uuid
+
+  problem  Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([problemId, categoryId])
+  @@map("problem_categories")
+}
+
+model Testcase {
+  id             String             @id @default(uuid()) @db.Uuid
+  problemId      String             @db.Uuid
+  inputData      String             @db.Text
+  expectedOutput String             @db.Text
+  isHidden       Boolean            @default(true)
+  orderIndex     Int                @default(0)
+
+  problem Problem            @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  results SubmissionResult[]
+
+  @@map("testcases")
+}
+
+model Submission {
+  id         String           @id @default(uuid()) @db.Uuid
+  userId     String           @db.Uuid
+  problemId  String           @db.Uuid
+  language   String
+  sourceCode String           @db.Text
+  status     SubmissionStatus @default(PENDING)
+  totalTime  Int?
+  maxMemory  Int?
+  compileLog String?          @db.Text
+  createdAt  DateTime         @default(now())
+
+  user    User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem Problem            @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  results SubmissionResult[]
+  aiLogs  AILog[]
+
+  @@map("submissions")
+}
+
+model SubmissionResult {
+  id            String         @id @default(uuid()) @db.Uuid
+  submissionId  String         @db.Uuid
+  testcaseId    String         @db.Uuid
+  status        TestcaseStatus
+  executionTime Int            @default(0)
+  memoryUsed    Int            @default(0)
+  errorLog      String?        @db.Text
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  testcase   Testcase   @relation(fields: [testcaseId], references: [id], onDelete: Cascade)
+
+  @@map("submission_results")
+}
+
+model AILog {
+  id           String @id @default(uuid()) @db.Uuid
+  submissionId String @db.Uuid
+  errorContext String @db.Text
+  aiResponse   String @db.Text
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@map("ai_logs")
+}
