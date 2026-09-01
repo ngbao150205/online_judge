@@ -6,6 +6,7 @@ import authRoutes from './routes/auth.routes';
 import problemAdminRoutes from './routes/problem.admin.routes';
 import categoryRoutes from './routes/category.routes';
 import studentRoutes from './routes/student.routes';
+import userRoutes from './routes/user.routes';
 
 const app = express();
 
@@ -40,6 +41,9 @@ app.use('/api/v1/categories', categoryRoutes);
 
 //student route:
 app.use('/api/v1', studentRoutes);
+
+//profile:
+app.use('/api/v1/users', userRoutes);
 
 const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {
