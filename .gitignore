@@ -9,17 +9,11 @@ node_modules/
 dist/
 build/
 
-# Prisma / Postgres
-prisma/migrations/
-
 # Logs & System
 *.log
 .DS_Store
-.agents/
-.claude/
-.windsurf/
-skills-lock.json
 
+# AI tools
 .agents/
 .claude/
 .windsurf/

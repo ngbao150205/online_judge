@@ -19,6 +19,13 @@ enum Difficulty {
   HARD
 }
 
+// Quy tắc so sánh output của từng problem.
+enum CheckerType {
+  TOKENS
+  FLOAT
+}
+
+// Trạng thái tổng hợp của một lần nộp chính thức.
 enum SubmissionStatus {
   PENDING
   IN_PROGRESS
@@ -28,59 +35,71 @@ enum SubmissionStatus {
   MEMORY_LIMIT_EXCEEDED
   RUNTIME_ERROR
   COMPILE_ERROR
+  SYSTEM_ERROR
 }
 
+// Trạng thái riêng của từng testcase.
 enum TestcaseStatus {
+  PENDING
   AC
   WA
   TLE
   MLE
   RE
+  CE
+  SYSTEM_ERROR
 }
 
 // ================= MODELS =================
 
 model User {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String
-  email     String   @unique
-  pwd       String
+  id                   String    @id @default(uuid()) @db.Uuid
+  name                 String
+  email                String    @unique
+  pwd                  String
   resetPasswordToken   String?
   resetPasswordExpires DateTime?
-  role      Role     @default(STUDENT)
-  createdAt DateTime @default(now())
+  role                 Role      @default(STUDENT)
+  createdAt            DateTime  @default(now())
 
   submissions Submission[]
+
+  roadmapProgress RoadmapProgress[]
 
   @@map("users")
 }
 
 model Category {
-  id       String            @id @default(uuid()) @db.Uuid
-  name     String            @unique
+  id   String @id @default(uuid()) @db.Uuid
+  name String @unique
+
   problems ProblemCategory[]
 
   @@map("categories")
 }
 
 model Problem {
-  id          String            @id @default(uuid()) @db.Uuid
+  id          String      @id @default(uuid()) @db.Uuid
   title       String
-  slug        String            @unique
-  description String            @db.Text
-  difficulty  Difficulty        @default(MEDIUM)
-  timeLimit   Int               @default(1000)
-  memoryLimit Int               @default(256)
-  isActive    Boolean           @default(true)
+  slug        String      @unique
+  description String      @db.Text
+  difficulty  Difficulty  @default(MEDIUM)
+  timeLimit   Int         @default(1000)
+  memoryLimit Int         @default(256)
+  isActive    Boolean     @default(true)
+  checkerType CheckerType @default(TOKENS)
 
-  categories  ProblemCategory[]
-  testcases   Testcase[]
-  submissions Submission[]
+  categories      ProblemCategory[]
+  testcases       Testcase[]
+  submissions     Submission[]
+  roadmapProblems RoadmapProblem[]
+
+  roadmapProgress RoadmapProgress[]
 
   @@map("problems")
 }
 
-// Bảng trung gian Danh mục - Bài tập (Chính xác theo problem_categories trong ảnh)
+// Bảng liên kết Problem và Category.
 model ProblemCategory {
   problemId  String @db.Uuid
   categoryId String @db.Uuid
@@ -93,12 +112,12 @@ model ProblemCategory {
 }
 
 model Testcase {
-  id             String             @id @default(uuid()) @db.Uuid
-  problemId      String             @db.Uuid
-  inputData      String             @db.Text
-  expectedOutput String             @db.Text
-  isHidden       Boolean            @default(true)
-  orderIndex     Int                @default(0)
+  id             String  @id @default(uuid()) @db.Uuid
+  problemId      String  @db.Uuid
+  inputData      String  @db.Text
+  expectedOutput String  @db.Text
+  isHidden       Boolean @default(true)
+  orderIndex     Int     @default(0)
 
   problem Problem            @relation(fields: [problemId], references: [id], onDelete: Cascade)
   results SubmissionResult[]
@@ -106,34 +125,48 @@ model Testcase {
   @@map("testcases")
 }
 
+// Lưu lịch sử nộp chính thức.
+// PLAYGROUND và PROBLEM_TRIAL hiện lưu kết quả tạm trong Redis.
 model Submission {
-  id         String           @id @default(uuid()) @db.Uuid
-  userId     String           @db.Uuid
-  problemId  String           @db.Uuid
-  language   String
-  sourceCode String           @db.Text
-  status     SubmissionStatus @default(PENDING)
-  totalTime  Int?
-  maxMemory  Int?
-  compileLog String?          @db.Text
-  createdAt  DateTime         @default(now())
+  id             String           @id @default(uuid()) @db.Uuid
+  userId         String           @db.Uuid
+  problemId      String           @db.Uuid
+  language       String
+  sourceCode     String           @db.Text
+  status         SubmissionStatus @default(PENDING)
+  totalTestcases Int              @default(0)
+  totalTime      Int?
+  maxMemory      Int?
+  compileLog     String?          @db.Text
+  createdAt      DateTime         @default(now())
 
-  user    User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  problem Problem            @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
   results SubmissionResult[]
   aiLogs  AILog[]
+
+  completedRoadmaps RoadmapProgress[]
 
   @@map("submissions")
 }
 
+// Tạo các hàng PENDING trước khi gửi job vào SQS.
+// Result worker cập nhật từng hàng khi nhận kết quả.
 model SubmissionResult {
-  id            String         @id @default(uuid()) @db.Uuid
-  submissionId  String         @db.Uuid
-  testcaseId    String         @db.Uuid
-  status        TestcaseStatus
-  executionTime Int            @default(0)
-  memoryUsed    Int            @default(0)
-  errorLog      String?        @db.Text
+  id           String @id @default(uuid()) @db.Uuid
+  submissionId String @db.Uuid
+  testcaseId   String @db.Uuid
+
+  status TestcaseStatus @default(PENDING)
+
+  executionTime Int @default(0)
+  memoryUsed    Int @default(0)
+
+  output         String? @db.Text
+  expectedOutput String? @db.Text
+
+  errorLog String? @db.Text
 
   submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
   testcase   Testcase   @relation(fields: [testcaseId], references: [id], onDelete: Cascade)
@@ -150,4 +183,61 @@ model AILog {
   submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 
   @@map("ai_logs")
+}
+
+model Roadmap {
+  id          String   @id @default(uuid()) @db.Uuid
+  title       String
+  description String?  @db.Text
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  problems RoadmapProblem[]
+
+  progress RoadmapProgress[]
+
+  @@map("roadmaps")
+}
+
+model RoadmapProblem {
+  id         String @id @default(uuid()) @db.Uuid
+  roadmapId  String @db.Uuid
+  problemId  String @db.Uuid
+  orderIndex Int    @default(0)
+
+  roadmap Roadmap @relation(fields: [roadmapId], references: [id], onDelete: Cascade)
+  problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  @@unique([roadmapId, problemId])
+  @@map("roadmap_problems")
+}
+
+model RoadmapProgress {
+  id        String @id @default(uuid()) @db.Uuid
+  userId    String @db.Uuid
+  roadmapId String @db.Uuid
+  problemId String @db.Uuid
+
+  // Trạng thái hoàn thành
+  isSolved Boolean @default(false)
+
+  // Thời gian AC
+  solvedAt DateTime?
+
+  // Số lần submit
+  attemptCount Int @default(0)
+
+  // Submission AC cuối cùng
+  lastSubmissionId String? @db.Uuid
+
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roadmap        Roadmap     @relation(fields: [roadmapId], references: [id], onDelete: Cascade)
+  problem        Problem     @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  lastSubmission Submission? @relation(fields: [lastSubmissionId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, roadmapId, problemId])
+  @@index([userId, roadmapId])
+  @@index([roadmapId, problemId])
+  @@map("roadmap_progress")
 }
