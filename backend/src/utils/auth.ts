@@ -1,7 +1,9 @@
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
+import { randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
+import { env } from '../config/env.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_key_2026';
+const JWT_SECRET = env.JWT_SECRET;
 const SALT_ROUNDS = 10;
 
 export const hashPassword = async (password: string): Promise<string> => {
@@ -12,10 +14,13 @@ export const comparePassword = async (password: string, hash: string): Promise<b
   return await bcrypt.compare(password, hash);
 };
 
-export const generateToken = (payload: { userId: string; role: string }): string => {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+export const generateToken = (payload: { userId: string; role: string; sessionId?: string; tokenVersion?: number }): string => {
+  const { sessionId, ...claims } = payload;
+  return jwt.sign({ ...claims, tokenVersion: payload.tokenVersion ?? 0 }, JWT_SECRET, {
+    expiresIn: env.SESSION_TTL_SECONDS, jwtid: sessionId ?? randomUUID(), algorithm: 'HS256',
+  });
 };
 
-export const verifyToken = (token: string): any => {
-  return jwt.verify(token, JWT_SECRET);
+export const verifyToken = (token: string): jwt.JwtPayload | string => {
+  return jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
 };

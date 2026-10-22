@@ -1,3 +1,4 @@
+import { API_BASE_URL } from '../config/api';
 import React, { useState, useEffect } from 'react';
 import { 
   Plus, Search, Edit3, Trash2, BookOpen, Clock, HardDrive, 
@@ -66,7 +67,7 @@ export const AdminProblems: React.FC = () => {
     { inputData: '', expectedOutput: '', isHidden: false }
   ]);
 
-  const API_BASE = 'http://localhost:5001/api';
+  const API_BASE = API_BASE_URL;
   
 
   // Hàm tải dữ liệu bài tập & danh mục
@@ -74,24 +75,15 @@ export const AdminProblems: React.FC = () => {
     setLoading(true);
     setErrorMessage(null);
 
-    const token = localStorage.getItem('token');
-    if (!token) {
-      setErrorMessage(t('Chưa đăng nhập hoặc thiếu Token xác thực. Vui lòng đăng nhập lại.', 'Not logged in or missing auth token. Please log in again.'));
-      setLoading(false);
-      return;
-    }
-
-    const authHeader = { headers: { Authorization: `Bearer ${token}` } };
-
     try {
       // 1. Tải bài tập
-      const problemsRes = await axios.get(`${API_BASE}/admin/problems`, authHeader);
+      const problemsRes = await axios.get(`${API_BASE}/admin/problems`);
       const rawProblems = problemsRes.data?.data || problemsRes.data;
       setProblems(Array.isArray(rawProblems) ? rawProblems : []);
 
       // 2. Tải danh mục
       try {
-        const categoriesRes = await axios.get(`${API_BASE}/admin/categories`, authHeader);
+        const categoriesRes = await axios.get(`${API_BASE}/admin/categories`);
         const rawCategories = categoriesRes.data?.data || categoriesRes.data;
         setCategories(Array.isArray(rawCategories) ? rawCategories : []);
       } catch (catErr) {
@@ -138,18 +130,11 @@ export const AdminProblems: React.FC = () => {
   try {
     setCreatingCategory(true);
 
-    const token = localStorage.getItem('token');
-
     await axios.post(
       `${API_BASE}/admin/categories`,
       {
         name: categoryName.trim(),
       },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
     );
 
 
@@ -187,13 +172,7 @@ export const AdminProblems: React.FC = () => {
   // Mở modal tạo mới
   const handleOpenCreateModal = async () => {
     try {
-      const token = localStorage.getItem('token');
-
-      const res = await axios.get(`${API_BASE}/admin/categories`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const res = await axios.get(`${API_BASE}/admin/categories`);
 
       const rawCategories = res.data?.data || res.data;
 
@@ -232,10 +211,7 @@ export const AdminProblems: React.FC = () => {
   // Mở modal sửa
   const handleOpenEditModal = async (problemId: string) => {
     try {
-      const token = localStorage.getItem('token');
-      const res = await axios.get(`${API_BASE}/admin/problems/${problemId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await axios.get(`${API_BASE}/admin/problems/${problemId}`);
 
       const data = res.data.data || res.data;
       setEditingProblemId(data.id);
@@ -293,9 +269,6 @@ export const AdminProblems: React.FC = () => {
 
     try {
       setSubmitting(true);
-      const token = localStorage.getItem('token');
-      const authHeader = { headers: { Authorization: `Bearer ${token}` } };
-
       const payload = {
         title,
         description,
@@ -308,10 +281,10 @@ export const AdminProblems: React.FC = () => {
       };
 
       if (editingProblemId) {
-        await axios.put(`${API_BASE}/admin/problems/${editingProblemId}`, payload, authHeader);
+        await axios.put(`${API_BASE}/admin/problems/${editingProblemId}`, payload);
         alert(t('Cập nhật bài tập thành công!', 'Problem updated successfully!'));
       } else {
-        await axios.post(`${API_BASE}/admin/problems`, payload, authHeader);
+        await axios.post(`${API_BASE}/admin/problems`, payload);
         alert(t('Tạo bài tập mới thành công!', 'New problem created successfully!'));
       }
 
@@ -328,10 +301,7 @@ export const AdminProblems: React.FC = () => {
     if (!window.confirm(`${t('Bạn có chắc chắn muốn xóa bài tập', 'Are you sure you want to delete the problem')} "${problemTitle}"?`)) return;
 
     try {
-      const token = localStorage.getItem('token');
-      await axios.delete(`${API_BASE}/admin/problems/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await axios.delete(`${API_BASE}/admin/problems/${id}`);
       alert(t('Xóa bài tập thành công!', 'Problem deleted successfully!'));
       fetchData();
     } catch (error: any) {

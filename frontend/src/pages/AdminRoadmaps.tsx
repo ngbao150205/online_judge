@@ -1,3 +1,4 @@
+import { API_BASE_URL } from '../config/api';
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { 
@@ -60,20 +61,15 @@ export const AdminRoadmaps: React.FC = () => {
   const [problemSearchQuery, setProblemSearchQuery] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const API_BASE = 'http://localhost:5001/api';
-
-  const getAuthHeader = () => {
-    const token = localStorage.getItem('token');
-    return token ? { headers: { Authorization: `Bearer ${token}` } } : {};
-  };
+  const API_BASE = API_BASE_URL;
 
   // Tải danh sách lộ trình & tất cả bài tập để chọn
   const fetchData = async () => {
     try {
       setLoading(true);
       const [resRoadmaps, resProblems] = await Promise.all([
-        axios.get(`${API_BASE}/admin/roadmaps`, getAuthHeader()),
-        axios.get(`${API_BASE}/problems`, getAuthHeader()),
+        axios.get(`${API_BASE}/admin/roadmaps`),
+        axios.get(`${API_BASE}/problems`),
       ]);
 
       setRoadmaps(resRoadmaps.data?.data || []);
@@ -209,9 +205,9 @@ export const AdminRoadmaps: React.FC = () => {
       };
 
       if (editingId) {
-        await axios.put(`${API_BASE}/admin/roadmaps/${editingId}`, payload, getAuthHeader());
+        await axios.put(`${API_BASE}/admin/roadmaps/${editingId}`, payload);
       } else {
-        await axios.post(`${API_BASE}/admin/roadmaps`, payload, getAuthHeader());
+        await axios.post(`${API_BASE}/admin/roadmaps`, payload);
       }
 
       setIsModalOpen(false);
@@ -228,7 +224,7 @@ export const AdminRoadmaps: React.FC = () => {
   const handleDeleteRoadmap = async (id: string) => {
     if (!window.confirm(t('Bạn có chắc chắn muốn xóa lộ trình này?', 'Are you sure you want to delete this roadmap?'))) return;
     try {
-      await axios.delete(`${API_BASE}/admin/roadmaps/${id}`, getAuthHeader());
+      await axios.delete(`${API_BASE}/admin/roadmaps/${id}`);
       fetchData();
     } catch (error) {
       console.error('Lỗi khi xóa lộ trình:', error);

@@ -1,3 +1,4 @@
+import { API_BASE_URL } from '../config/api';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   GraduationCap,
@@ -15,6 +16,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
+import { apiFetch } from '../services/api';
 
 export interface StudentItem {
   id: string;
@@ -28,7 +30,7 @@ export interface StudentItem {
 }
 
 // Cấu hình đường dẫn kết nối Backend Express
-const API_BASE = 'http://localhost:5001/api/admin';
+const API_BASE = `${API_BASE_URL}/admin`;
 
 export const AdminUsers: React.FC = () => {
   const { t } = useLanguage();
@@ -62,12 +64,9 @@ export const AdminUsers: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const token = localStorage.getItem('token');
-
-      const response = await fetch(`${API_BASE}/users`, {
+      const response = await apiFetch(`${API_BASE}/users`, {
         headers: {
           'Content-Type': 'application/json',
-          ...(token && { Authorization: `Bearer ${token}` }),
         },
       });
 
@@ -146,7 +145,6 @@ export const AdminUsers: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      const token = localStorage.getItem('token');
       const url = editingStudent
         ? `${API_BASE}/users/${editingStudent.id}`
         : `${API_BASE}/users`;
@@ -161,11 +159,10 @@ export const AdminUsers: React.FC = () => {
         payload.password = formData.pwd;
       }
 
-      const response = await fetch(url, {
+      const response = await apiFetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
-          ...(token && { Authorization: `Bearer ${token}` }),
         },
         body: JSON.stringify(payload),
       });
@@ -189,9 +186,9 @@ export const AdminUsers: React.FC = () => {
   const handleDeleteStudent = async (id: string, email: string) => {
     if (
       !window.confirm(
-        t(
-          `CẢNH BÁO: Bạn có chắc muốn xóa vĩnh viễn sinh viên "${email}"?`,
-          `WARNING: Are you sure you want to permanently delete student "${email}"?`
+      t(
+          `Bạn có chắc muốn xóa tài khoản "${email}"? Lịch sử bài nộp sẽ được giữ lại.`,
+          `Delete account "${email}"? Submission history will be retained.`
         )
       )
     ) {
@@ -199,12 +196,8 @@ export const AdminUsers: React.FC = () => {
     }
 
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${API_BASE}/users/${id}`, {
+      const response = await apiFetch(`${API_BASE}/users/${id}`, {
         method: 'DELETE',
-        headers: {
-          ...(token && { Authorization: `Bearer ${token}` }),
-        },
       });
 
       const result = await response.json();

@@ -1,6 +1,7 @@
+import { logout } from '../services/session';
 import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
+import api from '../services/api';
 import { 
   User, 
   Mail, 
@@ -50,16 +51,8 @@ export const Profile: React.FC = () => {
 
   useEffect(() => {
     const fetchUserProfile = async () => {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        navigate('/login');
-        return;
-      }
-
       try {
-        const res = await axios.get('http://localhost:5001/api/auth/me', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await api.get('/auth/me');
 
         const userData = res?.data?.data || res?.data;
         if (userData) {
@@ -71,6 +64,7 @@ export const Profile: React.FC = () => {
         }
       } catch (err: any) {
         console.error('Lỗi khi tải thông tin profile:', err);
+        if (err?.response?.status === 401) navigate('/login');
         setStatusMsg({
           type: 'error',
           text: 'FETCH_ERROR',
@@ -89,13 +83,8 @@ export const Profile: React.FC = () => {
     setSaving(true);
     setStatusMsg(null);
 
-    const token = localStorage.getItem('token');
     try {
-      const res = await axios.put(
-        'http://localhost:5001/api/auth/me',
-        { name: formData.name },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const res = await api.put('/auth/me', { name: formData.name });
 
       const updatedUser = res?.data?.data || res?.data;
       setUser((prev: any) => ({ ...prev, ...updatedUser, name: formData.name }));
@@ -132,11 +121,9 @@ export const Profile: React.FC = () => {
     }
 
     setChangingPassword(true);
-    const token = localStorage.getItem('token');
-
     try {
-      await axios.put(
-        'http://localhost:5001/api/auth/change-password',
+      await api.put(
+        '/auth/change-password',
         {
           oldPassword: passwordData.currentPassword,
           currentPassword: passwordData.currentPassword,
@@ -144,13 +131,9 @@ export const Profile: React.FC = () => {
           newPassword: passwordData.newPassword,
           confirmPassword: passwordData.confirmPassword,
         },
-        { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      setStatusMsg({
-        type: 'success',
-        text: 'CHANGE_PWD_SUCCESS',
-      });
+      navigate('/login');
       setIsPasswordModalOpen(false);
       setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
     } catch (err: any) {
@@ -166,9 +149,8 @@ export const Profile: React.FC = () => {
   };
 
   // Xử lý Đăng xuất
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('role');
+  const handleLogout = async () => {
+    try { await logout(); } catch { alert('Không thể đăng xuất khỏi máy chủ. Vui lòng thử lại.'); return; }
     navigate('/login');
   };
 

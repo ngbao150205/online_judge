@@ -1,131 +1,19 @@
-import { Response } from 'express';
-import { AuthRequest } from '../../middlewares/auth.middleware';
-import { Difficulty } from '@prisma/client';
-import { ProblemStudentService } from '../../services/problem.student.service';
+import type { Response } from 'express';
+import { sendSuccess, currentUserId } from '../controller.utils.js';
+import type { ControllerRequest } from '../controller.utils.js';
+import { getPublicProblemsService, getPublicProblemDetailService } from '../../services/problem.student.service.js';
+import type { GetProblemsParams } from '../../services/problem.student.service.js';
 
+export async function getPublicProblems(req: ControllerRequest, res: Response): Promise<void> {
+  const result = await getPublicProblemsService({
+    page: Number(req.query.page ?? 1), limit: Number(req.query.limit ?? 10),
+    search: req.query.search as string | undefined, categoryId: req.query.categoryId as string | undefined,
+    difficulty: req.query.difficulty as GetProblemsParams['difficulty'],
+  }, currentUserId(req));
+  sendSuccess(res, { data: result.problems, pagination: result.pagination });
+}
 
-/**
- * Lấy danh sách bài tập công khai
- * Có kiểm tra bài đã giải của user hiện tại
- */
-export const getPublicProblems = async (
-  req: AuthRequest,
-  res: Response
-) => {
-  try {
-
-    const page =
-      parseInt(req.query.page as string) || 1;
-
-    const limit =
-      parseInt(req.query.limit as string) || 10;
-
-    const search =
-      req.query.search as string;
-
-    const categoryId =
-      req.query.categoryId as string;
-
-    const difficulty =
-      req.query.difficulty as Difficulty;
-
-
-    // Lấy user hiện tại từ JWT
-    const userId =
-      req.user?.userId;
-
-
-    const result =
-      await ProblemStudentService.getPublicProblems(
-        {
-          page,
-          limit,
-          search,
-          categoryId,
-          difficulty,
-        },
-        userId
-      );
-
-
-    return res.status(200).json({
-      success: true,
-      data: result.problems,
-      pagination: result.pagination,
-    });
-
-
-  } catch (error) {
-
-    console.error(
-      'getPublicProblems error:',
-      error
-    );
-
-
-    return res.status(500).json({
-      success: false,
-      message: 'Lỗi lấy danh sách bài tập',
-      error,
-    });
-
-  }
-};
-
-
-
-/**
- * Lấy chi tiết bài tập theo slug
- */
-export const getPublicProblemDetail = async (
-  req: AuthRequest,
-  res: Response
-) => {
-
-  try {
-
-    const slug =
-      req.params.slug as string;
-
-
-    const problem =
-      await ProblemStudentService.getPublicProblemDetail(
-        slug
-      );
-
-
-    if (!problem) {
-
-      return res.status(404).json({
-        success: false,
-        message:
-          'Bài tập không tồn tại hoặc đã dừng mở',
-      });
-
-    }
-
-
-    return res.status(200).json({
-      success: true,
-      data: problem,
-    });
-
-
-  } catch (error) {
-
-    console.error(
-      'getPublicProblemDetail error:',
-      error
-    );
-
-
-    return res.status(500).json({
-      success: false,
-      message:
-        'Lỗi server khi lấy chi tiết bài tập',
-      error,
-    });
-
-  }
-
-};
+export async function getPublicProblemDetail(req: ControllerRequest, res: Response): Promise<void> {
+  const data = await getPublicProblemDetailService(req.params.slug);
+  sendSuccess(res, { data });
+}

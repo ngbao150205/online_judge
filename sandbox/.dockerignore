@@ -1,0 +1,6 @@
+worker/.env*
+worker/evidence
+worker/cmd/sandbox-evidence
+evidence
+.env*
+*.log

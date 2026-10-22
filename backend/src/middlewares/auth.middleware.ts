@@ -1,50 +1,48 @@
-import { Request, Response, NextFunction } from 'express';
-import { verifyToken } from '../utils/auth';
+import type { Request, RequestHandler } from 'express';
+import { z } from 'zod';
+import { verifyToken } from '../utils/auth.js';
+import { AppError } from '../errors/app-error.js';
+import { readSession } from '../services/auth/session.service.js';
+import { readSessionCookie } from '../utils/session-cookie.js';
 
-// 1. Interface mở rộng từ Request
+const claimsSchema = z.object({
+  userId: z.uuid(), role: z.enum(['STUDENT', 'ADMIN']), exp: z.number().int().positive(),
+  jti: z.uuid(), tokenVersion: z.number().int().nonnegative(),
+});
 export interface AuthRequest extends Request {
-  user?: {
-    userId: string;
-    role: string;
-  };
+  user?: { userId: string; role: 'STUDENT' | 'ADMIN'; sessionId?: string };
 }
 
-// 2. Middleware xác thực Token (Authentication)
-export const authenticate = (req: AuthRequest, res: Response, next: NextFunction) => {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ success: false, message: 'Bạn cần đăng nhập để thực hiện thao tác này' });
+export const authenticate: RequestHandler = async (req: AuthRequest, _res, next) => {
+  const token = readSessionCookie(req);
+  if (!token) {
+    return next(new AppError(401, 'Bạn cần đăng nhập để thực hiện thao tác này', 'UNAUTHENTICATED'));
   }
-
-  const token = authHeader.split(' ')[1];
-
+  let claims;
   try {
-    const decoded = verifyToken(token) as { userId: string; role: string };
-    req.user = decoded;
-    next();
-  } catch (error) {
-    return res.status(401).json({ success: false, message: 'Token hết hạn hoặc không hợp lệ' });
+    claims = claimsSchema.safeParse(verifyToken(token));
+    if (!claims.success) throw new Error('Invalid authentication claims');
+  } catch {
+    return next(new AppError(401, 'Token hết hạn hoặc không hợp lệ', 'INVALID_TOKEN'));
   }
+  try {
+    const user = await readSession(claims.data.userId, claims.data.jti, claims.data.tokenVersion);
+    req.user = { userId: user.id, role: user.role, sessionId: claims.data.jti };
+  } catch (error) { return next(error); }
+  // Keep downstream errors outside the token-verification catch block.
+  next();
 };
-
-// 3. Middleware phân quyền linh hoạt theo Roles (Authorization)
-export const authorize = (...allowedRoles: string[]) => {
-  return (req: AuthRequest, res: Response, next: NextFunction) => {
-    if (!req.user || !allowedRoles.includes(req.user.role)) {
-      return res.status(403).json({ success: false, message: 'Bạn không có quyền truy cập tài nguyên này' });
+export const authorize = (...allowedRoles: Array<'STUDENT' | 'ADMIN'>): RequestHandler => {
+  return (req: AuthRequest, _res, next) => {
+    if (!req.user) {
+      return next(new AppError(401, 'Bạn cần đăng nhập để thực hiện thao tác này', 'UNAUTHENTICATED'));
+    }
+    if (!allowedRoles.includes(req.user.role)) {
+      return next(new AppError(403, 'Bạn không có quyền truy cập tài nguyên này', 'FORBIDDEN'));
     }
     next();
   };
 };
 
-// 4. Middleware dành riêng cho Admin (Đã đổi req: Request -> req: AuthRequest)
-export const authorizeAdmin = (req: AuthRequest, res: Response, next: NextFunction) => {
-  if (!req.user || req.user.role !== 'ADMIN') {
-    return res.status(403).json({
-      success: false,
-      message: 'Truy cập bị từ chối. Bạn không có quyền Admin/Giảng viên',
-    });
-  }
-  next();
-};
+// Compatibility export; authorization has one implementation.
+export const authorizeAdmin = authorize('ADMIN');

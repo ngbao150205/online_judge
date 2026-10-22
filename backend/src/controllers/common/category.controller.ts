@@ -1,60 +1,26 @@
-import { Response } from 'express';
-import { AuthRequest } from '../../middlewares/auth.middleware';
-import prisma from '../../config/db';
+import type { Response } from 'express';
+import { sendSuccess } from '../controller.utils.js';
+import type { ControllerRequest } from '../controller.utils.js';
+import {
+  getCategoriesService, createCategoryService, updateCategoryService, deleteCategoryService,
+} from '../../services/category.service.js';
 
-export const getCategories = async (req: AuthRequest, res: Response) => {
-  try {
-    const categories = await prisma.category.findMany({
-      select: {
-        id: true,
-        name: true,
-        _count: { select: { problems: true } },
-      },
-      orderBy: { name: 'asc' },
-    });
-    return res.status(200).json({ success: true, data: categories });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: 'Lỗi lấy danh sách danh mục', error });
-  }
-};
+export async function getCategories(req: ControllerRequest, res: Response): Promise<void> {
+  const data = await getCategoriesService();
+  sendSuccess(res, { data });
+}
 
-export const createCategory = async (req: AuthRequest, res: Response) => {
-  try {
-    const { name } = req.body;
-    if (!name || name.trim() === '') {
-      return res.status(400).json({ success: false, message: 'Tên danh mục không được để trống' });
-    }
-    const existingCategory = await prisma.category.findUnique({ where: { name: name.trim() } });
-    if (existingCategory) {
-      return res.status(400).json({ success: false, message: 'Danh mục này đã tồn tại' });
-    }
-    const category = await prisma.category.create({ data: { name: name.trim() } });
-    return res.status(201).json({ success: true, message: 'Tạo danh mục thành công', data: category });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: 'Lỗi server khi tạo danh mục', error });
-  }
-};
+export async function createCategory(req: ControllerRequest<{ name: string }>, res: Response): Promise<void> {
+  const data = await createCategoryService(req.body.name);
+  sendSuccess(res, { message: 'Tạo danh mục thành công', data }, 201);
+}
 
-export const updateCategory = async (req: AuthRequest, res: Response) => {
-  try {
-    const id = req.params.id as string;
-    const { name } = req.body;
-    if (!name || name.trim() === '') {
-      return res.status(400).json({ success: false, message: 'Tên danh mục không được để trống' });
-    }
-    const category = await prisma.category.update({ where: { id }, data: { name: name.trim() } });
-    return res.status(200).json({ success: true, message: 'Cập nhật danh mục thành công', data: category });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: 'Lỗi cập nhật danh mục hoặc không tìm thấy ID', error });
-  }
-};
+export async function updateCategory(req: ControllerRequest<{ name: string }>, res: Response): Promise<void> {
+  const data = await updateCategoryService(req.params.id, req.body.name);
+  sendSuccess(res, { message: 'Cập nhật danh mục thành công', data });
+}
 
-export const deleteCategory = async (req: AuthRequest, res: Response) => {
-  try {
-    const id = req.params.id as string;
-    await prisma.category.delete({ where: { id } });
-    return res.status(200).json({ success: true, message: 'Xóa danh mục thành công' });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: 'Lỗi xóa danh mục hoặc không tìm thấy ID', error });
-  }
-};
+export async function deleteCategory(req: ControllerRequest, res: Response): Promise<void> {
+  await deleteCategoryService(req.params.id);
+  sendSuccess(res, { message: 'Xóa danh mục thành công' });
+}

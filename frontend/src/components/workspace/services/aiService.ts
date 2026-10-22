@@ -1,4 +1,6 @@
-const API_BASE = 'http://localhost:5001/api';
+import { API_BASE_URL } from '../../../config/api';
+import { apiFetch } from '../../../services/api';
+const API_BASE = API_BASE_URL;
 
 interface ExplainCodeParams {
   sourceCode: string;
@@ -11,21 +13,12 @@ export const explainCode = async ({
   language,
   errorMessage,
 }: ExplainCodeParams): Promise<string> => {
-  const token =
-    localStorage.getItem('token');
-
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE}/ai/explain`,
     {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-
-        ...(token
-          ? {
-              Authorization: `Bearer ${token}`,
-            }
-          : {}),
       },
       body: JSON.stringify({
         sourceCode,

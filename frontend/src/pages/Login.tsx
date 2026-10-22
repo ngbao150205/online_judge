@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
 import { Shield, User, Lock, ArrowRight, LayoutDashboard, Home, Loader2, X, AlertCircle } from 'lucide-react';
 import { GoogleLogin } from '@react-oauth/google';
 import { useLanguage } from '../context/LanguageContext';
+import api from '../services/api';
+
+const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
 export const Login: React.FC = () => {
   const { t } = useLanguage();
@@ -12,31 +14,20 @@ export const Login: React.FC = () => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [agreeTerms, setAgreeTerms] = useState(false);
 
   // Trạng thái modal hỏi Admin chọn trang
   const [showAdminChoice, setShowAdminChoice] = useState(false);
 
   const handleAuthSuccess = (responseData: any) => {
-    // 🟢 Thêm log để bạn dễ dàng debug cấu trúc trả về trong Tab Console trình duyệt
-    console.log("🔥 Dữ liệu Auth trả về:", responseData);
-
-    // Bóc tách linh hoạt: Đề phòng trường hợp Axios bọc thêm một tầng .data hoặc không
     const actualData = responseData?.data?.data || responseData?.data || responseData;
-    
-    const token = actualData?.token;
     const user = actualData?.user;
     const role = user?.role || 'STUDENT';
 
-    // 🟢 Kiểm tra nếu không có token thì dừng lại để tránh lưu giá trị "undefined" vào localStorage
-    if (!token) {
-      console.error("❌ Đăng nhập thành công nhưng không tìm thấy trường 'token' trong phản hồi của Backend!");
-      setError(t('Lỗi hệ thống: Không tìm thấy token xác thực.', 'System error: Authentication token not found.'));
+    if (!user) {
+      setError(t('Phản hồi đăng nhập không hợp lệ.', 'Invalid sign-in response.'));
       return;
     }
-
-    // Lưu thông tin vào localStorage
-    localStorage.setItem('token', token);
-    localStorage.setItem('role', role);
 
     // Điều hướng phân quyền
     if (role === 'ADMIN') {
@@ -52,7 +43,7 @@ export const Login: React.FC = () => {
     setError('');
 
     try {
-      const res = await axios.post('http://localhost:5001/api/auth/login', {
+      const res = await api.post('/auth/login', {
         email,
         password,
       });
@@ -69,12 +60,17 @@ export const Login: React.FC = () => {
 
   // Xử lý Google Sign In
   const handleGoogleSuccess = async (credentialResponse: any) => {
+    if (!agreeTerms) {
+      setError(t('Bạn cần đồng ý với Điều khoản sử dụng và Chính sách bảo mật để tiếp tục.', 'You must agree to the Terms of Use and Privacy Policy to continue.'));
+      return;
+    }
     setLoading(true);
     setError('');
 
     try {
-      const res = await axios.post('http://localhost:5001/api/auth/google', {
+      const res = await api.post('/auth/google', {
         credential: credentialResponse.credential,
+        acceptedTerms: true,
       });
       handleAuthSuccess(res.data);
     } catch (err: any) {
@@ -116,17 +112,35 @@ export const Login: React.FC = () => {
         )}
 
         {/* NÚT GOOGLE SIGN IN - Đã fix width="350" */}
-        <div className="flex justify-center w-full">
-          <GoogleLogin
-            onSuccess={handleGoogleSuccess}
-            onError={() => setError(t('Đăng nhập Google thất bại!', 'Google Sign-In failed!'))}
-            shape="circle"
-            size="large"
-            width="350"
-            text="signin_with"
-            useOneTap={false}
-          />
-        </div>
+        {googleClientId ? <>
+          <label className="flex items-start justify-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={agreeTerms}
+              onChange={(event) => setAgreeTerms(event.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span>
+              {t('Tôi đồng ý với', 'I agree to the')}{' '}
+              <a href="#terms" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">{t('Điều khoản', 'Terms')}</a>{' '}
+              {t('và', 'and')}{' '}
+              <a href="#privacy" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">{t('Bảo mật', 'Privacy Policy')}</a>
+            </span>
+          </label>
+          <div className="flex justify-center w-full">
+            <GoogleLogin
+              onSuccess={handleGoogleSuccess}
+              onError={() => setError(t('Đăng nhập Google thất bại!', 'Google Sign-In failed!'))}
+              shape="circle"
+              size="large"
+              width="350"
+              text="signin_with"
+              useOneTap={false}
+            />
+          </div>
+        </> : <p className="text-center text-xs text-slate-500 dark:text-slate-400">
+          {t('Đăng nhập Google hiện chưa được cấu hình.', 'Google sign-in is not configured.')}
+        </p>}
 
         <div className="relative flex items-center justify-center my-2">
           <div className="border-t border-slate-200 dark:border-slate-800 w-full"></div>

@@ -1,3 +1,4 @@
+import { API_BASE_URL } from '../config/api';
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, Edit2, Database, Trash2, BookOpen, Map } from 'lucide-react';
 import axios from 'axios';
@@ -41,9 +42,7 @@ export const ProblemAdminManager: React.FC = () => {
   const fetchProblems = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      const res = await axios.get('http://localhost:5001/api/v1/admin/problems', {
-        headers: { Authorization: `Bearer ${token}` },
+      const res = await axios.get(`${API_BASE_URL}/v1/admin/problems`, {
       });
       setProblems(res.data?.data || []);
     } catch (error) {
@@ -56,9 +55,7 @@ export const ProblemAdminManager: React.FC = () => {
   const fetchRoadmaps = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      const res = await axios.get('http://localhost:5001/api/v1/admin/roadmaps', {
-        headers: { Authorization: `Bearer ${token}` },
+      const res = await axios.get(`${API_BASE_URL}/v1/admin/roadmaps`, {
       });
       setRoadmaps(res.data?.data || []);
     } catch (error) {
@@ -78,11 +75,9 @@ export const ProblemAdminManager: React.FC = () => {
 
   const handleToggleStatus = async (problem: ProblemItem) => {
     try {
-      const token = localStorage.getItem('token');
       await axios.put(
-        `http://localhost:5001/api/v1/admin/problems/${problem.id}`,
+        `${API_BASE_URL}/v1/admin/problems/${problem.id}`,
         { isActive: !problem.isActive },
-        { headers: { Authorization: `Bearer ${token}` } }
       );
       fetchProblems();
     } catch (error) {
@@ -93,10 +88,7 @@ export const ProblemAdminManager: React.FC = () => {
   const handleDeleteProblem = async (id: string) => {
     if (!window.confirm('Bạn có chắc chắn muốn xóa bài tập này?')) return;
     try {
-      const token = localStorage.getItem('token');
-      await axios.delete(`http://localhost:5001/api/v1/admin/problems/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await axios.delete(`${API_BASE_URL}/v1/admin/problems/${id}`);
       fetchProblems();
     } catch (error) {
       alert('Lỗi khi xóa bài tập');

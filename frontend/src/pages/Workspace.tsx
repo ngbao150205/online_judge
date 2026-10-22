@@ -1,3 +1,4 @@
+import { API_BASE_URL } from '../config/api';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
@@ -13,7 +14,7 @@ import {
   Code2, 
   CheckCircle2 
 } from 'lucide-react';
-import axios from 'axios';
+import { apiFetch } from '../services/api';
 
 interface Testcase {
   id?: string;
@@ -75,33 +76,7 @@ export const Workspace: React.FC = () => {
   // Ref lưu ID của Interval polling để dọn dẹp khi unmount
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const API_BASE = 'http://localhost:5001/api';
-
-  // Dọn dẹp interval khi component unmount
-  useEffect(() => {
-    if (isSandbox) {
-      setProblem(null);
-      setFetchingProblem(false);
-      return;
-    }
-
-    const fetchProblem = async () => {
-      try {
-        setFetchingProblem(true);
-        const token = localStorage.getItem('token');
-        const res = await axios.get(`\({API_BASE}/problems/\){slug}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        setProblem(res.data?.data || res.data);
-      } catch (err: any) {
-        console.error('Lỗi tải bài tập:', err);
-      } finally {
-        setFetchingProblem(false);
-      }
-    };
-
-    fetchProblem();
-  }, [slug, isSandbox]);
+  const API_BASE = API_BASE_URL;
 
   // Hàm ép kiểu an toàn cho dữ liệu JSON từ Prisma
   const parseJSON = (data: any, fallback: any) => {
@@ -116,12 +91,16 @@ export const Workspace: React.FC = () => {
 
   // 1. TẢI DỮ LIỆU BÀI TẬP & NẠP TEMPLATE CODE
   useEffect(() => {
-    if (!slug) return;
+    if (!slug || isSandbox) {
+      setProblem(null);
+      setFetchingProblem(false);
+      return;
+    }
 
     const fetchProblem = async () => {
       setFetchingProblem(true);
       try {
-        const res = await fetch(`${API_BASE}/problems/${slug}`);
+        const res = await apiFetch(`${API_BASE}/problems/${slug}`);
         if (!res.ok) throw new Error('Không thể tải bài tập');
         const result = await res.json();
 
@@ -141,7 +120,7 @@ export const Workspace: React.FC = () => {
     };
 
     fetchProblem();
-  }, [slug]);
+  }, [slug, isSandbox]);
 
   // 2. LẤY DANH SÁCH TESTCASES
   const testcaseList: Testcase[] = useMemo(() => {
@@ -172,8 +151,6 @@ export const Workspace: React.FC = () => {
 
   // 4. CHẠY THỬ NGHIỆM (GỬI YÊU CẦU & POLLING KẾT QUẢ TỪ REDIS)
   const handleRunCustomInput = async () => {
-    const token = localStorage.getItem('token');
-
     // Xóa interval polling cũ nếu có
     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
 
@@ -183,11 +160,10 @@ export const Workspace: React.FC = () => {
 
     try {
       // Step 1: Gọi API gửi request chạy thử
-      const res = await fetch(`${API_BASE}/submissions/run`, {
+      const res = await apiFetch(`${API_BASE}/submissions/run`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ 
           problemId: problem?.id,
@@ -228,9 +204,7 @@ export const Workspace: React.FC = () => {
         }
 
         try {
-          const pollRes = await fetch(`\({API_BASE}/submissions/run-status/\){runId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
+          const pollRes = await apiFetch(`${API_BASE}/submissions/run-status/${runId}`);
 
           if (!pollRes.ok) return;
 
@@ -281,7 +255,6 @@ export const Workspace: React.FC = () => {
   // 5. NỘP BÀI CHÍNH THỨC
   const handleSubmitCode = async () => {
     if (!problem) return;
-    const token = localStorage.getItem('token');
     
     // Xóa interval cũ nếu đang chạy
     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
@@ -294,11 +267,10 @@ export const Workspace: React.FC = () => {
     });
 
     try {
-      const res = await fetch(`${API_BASE}/submissions`, {
+      const res = await apiFetch(`${API_BASE}/submissions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ 
           problemId: problem.id, 
@@ -340,9 +312,7 @@ export const Workspace: React.FC = () => {
         }
 
         try {
-          const pollRes = await fetch(`${API_BASE}/submissions/${subId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
+          const pollRes = await apiFetch(`${API_BASE}/submissions/${subId}`);
 
           // Nếu chưa tìm thấy record hoặc lỗi server, bỏ qua lượt này để thử lại
           if (!pollRes.ok) {
@@ -385,15 +355,13 @@ export const Workspace: React.FC = () => {
 
   // 6. TRỢ GIẢNG AI
   const handleAIDebug = async () => {
-    const token = localStorage.getItem('token');
     setLoading(true);
     setActiveTab('ai');
     try {
-      const res = await fetch(`${API_BASE}/ai/explain`, {
+      const res = await apiFetch(`${API_BASE}/ai/explain`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           sourceCode: code,

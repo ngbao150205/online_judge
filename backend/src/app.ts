@@ -1,54 +1,46 @@
 // src/app.ts
-import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import morgan from 'morgan';
+import { requestLogger } from './middlewares/request-logger.middleware.js';
+import { notFound, errorHandler } from './middlewares/error.middleware.js';
 
-// 3 Bộ route đã gôm nhóm gọn gàng
-import authRoutes from './routes/auth.routes';
-import studentRoutes from './routes/student.routes';
-import adminRoutes from './routes/admin.routes';
+import apiRoutes from './routes/index.js';
+import prisma from './config/db.js';
+import { redisClient } from './config/redis.js';
+import { env } from './config/env.js';
 
-import { pollResults } from './workers/result.worker';
 
-const app = express();
 
-// 1. Cho phép Frontend React truy cập API
-app.use(cors());
-app.use((req, res, next) => {
-  res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
-  res.setHeader("Cross-Origin-Embedder-Policy", "credentialless"); // Hoặc dùng "require-corp" nếu cần chặt chẽ hơn
-  next();
-});
-app.set('etag', false);
-app.use(morgan('dev'));
+export function createApp() {
+  const app = express();
 
-// 2. Giải mã JSON Body
-app.use(express.json());
-
-// 3. LOGGER MIDDLEWARE (Giữ nguyên để theo dõi Request)
-app.use((req, res, next) => {
-  console.log(`\n--------------------------------------------------`);
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-  console.log(`Headers:`, req.headers);
-  console.log(`Body:`, req.body);
-  
-  res.on('finish', () => {
-    console.log(`Response Status: ${res.statusCode}`);
+  // 1. Cho phép Frontend React truy cập API
+  const origins = new Set(env.CORS_ORIGINS.split(',').map(origin => origin.trim()));
+  app.set('trust proxy', env.TRUST_PROXY_HOPS);
+  app.use(cors({ credentials: true, origin: (origin, callback) => callback(null, !origin || origins.has(origin)) }));
+  app.use((req, res, next) => {
+    res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+    res.setHeader("Cross-Origin-Embedder-Policy", "credentialless"); // Hoặc dùng "require-corp" nếu cần chặt chẽ hơn
+    next();
   });
-  
-  next();
-});
+  app.set('etag', false);
+  app.use(requestLogger);
+  app.use(express.json({ limit: '1mb' }));
 
-// 4. MOUNT ROUTER (Đăng ký 3 nhóm route chính)
-app.use('/api/auth', authRoutes);   // Đăng ký, Đăng nhập, Quên mật khẩu, Profile Auth
-app.use('/api', studentRoutes);      // Bài tập Public, Lộ trình Sinh viên, Nộp bài, Profile User
-app.use('/api/admin', adminRoutes);  // Tất cả chức năng Quản trị viên (Dashboard, Bài tập, Lộ trình, Category)
+  app.get('/health', async (_req, res) => {
+    try {
+      await Promise.all([prisma.$queryRaw`SELECT 1`, redisClient.ping()]);
+      res.json({ status: 'ok' });
+    } catch {
+      res.status(503).json({ status: 'unavailable' });
+    }
+  });
 
-const PORT = process.env.PORT || 5001;
-app.listen(PORT, () => {
-  console.log(`Server đang chạy tại http://localhost:${PORT}`);
+  // Route groups and access rules are composed in routes/index.ts.
+  app.use('/api', apiRoutes);
+  app.use(notFound);
+  app.use(errorHandler);
+  return app;
+}
 
-  pollResults();
-  console.log(`[Worker] Tiến trình lắng nghe kết quả SQS đã được kích hoạt thành công.`);
-});
+export default createApp;

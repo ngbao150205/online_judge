@@ -1,0 +1,5 @@
+FROM softwaremill/elasticmq:1.7.1
+USER root
+# Docker copies this directory's ownership when initializing a new named volume.
+RUN mkdir -p /data && chown elasticmq:elasticmq /data
+USER elasticmq

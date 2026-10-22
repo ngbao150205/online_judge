@@ -5,6 +5,9 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    proxy: {
+      '/api': 'http://localhost:5001',
+    },
     headers: {
       // 🟢 Cho phép hoàn toàn việc giao tiếp postMessage giữa localhost và Popup Google
       "Cross-Origin-Opener-Policy": "unsafe-none",

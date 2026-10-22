@@ -61,6 +61,11 @@ model User {
   resetPasswordExpires DateTime?
   role                 Role      @default(STUDENT)
   createdAt            DateTime  @default(now())
+  termsAcceptedAt      DateTime?
+  termsVersion         String?
+  deletedAt            DateTime?
+  tokenVersion         Int       @default(0)
+  sessions             AuthSession[]
 
   submissions Submission[]
 
@@ -72,6 +77,7 @@ model User {
 model Category {
   id   String @id @default(uuid()) @db.Uuid
   name String @unique
+  deletedAt DateTime?
 
   problems ProblemCategory[]
 
@@ -88,6 +94,8 @@ model Problem {
   memoryLimit Int         @default(256)
   isActive    Boolean     @default(true)
   checkerType CheckerType @default(TOKENS)
+  deletedAt DateTime?
+  testcaseVersion Int @default(1)
 
   categories      ProblemCategory[]
   testcases       Testcase[]
@@ -118,6 +126,8 @@ model Testcase {
   expectedOutput String  @db.Text
   isHidden       Boolean @default(true)
   orderIndex     Int     @default(0)
+  version        Int     @default(1)
+  deletedAt      DateTime?
 
   problem Problem            @relation(fields: [problemId], references: [id], onDelete: Cascade)
   results SubmissionResult[]
@@ -139,9 +149,16 @@ model Submission {
   maxMemory      Int?
   compileLog     String?          @db.Text
   createdAt      DateTime         @default(now())
+  deadlineAt     DateTime?
+  testcaseVersion Int @default(1)
+  outboxJobs OutboxJob[]
 
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  @@index([status, deadlineAt])
+  @@index([userId, status, problemId])
+  @@index([createdAt])
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  problem Problem @relation(fields: [problemId], references: [id], onDelete: Restrict)
 
   results SubmissionResult[]
   aiLogs  AILog[]
@@ -161,15 +178,17 @@ model SubmissionResult {
   status TestcaseStatus @default(PENDING)
 
   executionTime Int @default(0)
-  memoryUsed    Int @default(0)
+  memoryUsed    Int?
+  cpuTime       Int?
+  compileTime   Int?
 
   output         String? @db.Text
   expectedOutput String? @db.Text
 
   errorLog String? @db.Text
 
-  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
-  testcase   Testcase   @relation(fields: [testcaseId], references: [id], onDelete: Cascade)
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Restrict)
+  testcase   Testcase   @relation(fields: [testcaseId], references: [id], onDelete: Restrict)
 
   @@map("submission_results")
 }
@@ -180,7 +199,7 @@ model AILog {
   errorContext String @db.Text
   aiResponse   String @db.Text
 
-  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Restrict)
 
   @@map("ai_logs")
 }
@@ -192,6 +211,7 @@ model Roadmap {
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
 
   problems RoadmapProblem[]
 
@@ -231,13 +251,43 @@ model RoadmapProgress {
   // Submission AC cuối cùng
   lastSubmissionId String? @db.Uuid
 
-  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  roadmap        Roadmap     @relation(fields: [roadmapId], references: [id], onDelete: Cascade)
-  problem        Problem     @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  user           User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  roadmap        Roadmap     @relation(fields: [roadmapId], references: [id], onDelete: Restrict)
+  problem        Problem     @relation(fields: [problemId], references: [id], onDelete: Restrict)
   lastSubmission Submission? @relation(fields: [lastSubmissionId], references: [id], onDelete: SetNull)
 
   @@unique([userId, roadmapId, problemId])
   @@index([userId, roadmapId])
   @@index([roadmapId, problemId])
   @@map("roadmap_progress")
+}
+
+model AuthSession {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenVersion Int
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([userId, expiresAt])
+  @@map("auth_sessions")
+}
+
+model OutboxJob {
+  id String @id @default(uuid()) @db.Uuid
+  submissionId String @db.Uuid
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Restrict)
+  payload Json
+  attempts Int @default(0)
+  availableAt DateTime @default(now())
+  leaseUntil DateTime?
+  leaseToken String? @db.Uuid
+  sentAt DateTime?
+  cancelledAt DateTime?
+  lastError String?
+  createdAt DateTime @default(now())
+  @@index([sentAt, cancelledAt, availableAt])
+  @@index([submissionId])
+  @@map("outbox_jobs")
 }

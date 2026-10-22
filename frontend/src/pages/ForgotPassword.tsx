@@ -1,3 +1,4 @@
+import { API_BASE_URL } from '../config/api';
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, ArrowLeft, KeyRound, CheckCircle2, Loader2, AlertCircle, X } from 'lucide-react';
@@ -9,6 +10,7 @@ export const ForgotPassword: React.FC = () => {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [isSent, setIsSent] = useState(false);
+  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -19,7 +21,11 @@ export const ForgotPassword: React.FC = () => {
 
     try {
       // Gọi API Backend cổng 5001
-      await axios.post('http://localhost:5001/api/auth/forgot-password', { email });
+      const response = await axios.post(`${API_BASE_URL}/auth/forgot-password`, { email });
+      setNotice(response.data?.message || t(
+        'Nếu email thuộc tài khoản đang hoạt động, hướng dẫn đặt lại mật khẩu sẽ được gửi nếu dịch vụ email sẵn sàng.',
+        'If the email belongs to an active account, reset instructions will be sent when email delivery is available.'
+      ));
       setIsSent(true);
     } catch (err: any) {
       setError(
@@ -67,7 +73,7 @@ export const ForgotPassword: React.FC = () => {
               <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs mx-auto">
                 {t('Nhập email đã đăng ký để nhận', 'Enter your registered email to receive a')}{' '}
                 <strong className="text-slate-700 dark:text-slate-300">
-                  {t('mã OTP 4 chữ số', '4-digit OTP code')}
+                  {t('mã OTP 6 chữ số', '6-digit OTP code')}
                 </strong>{' '}
                 {t('khôi phục mật khẩu.', 'to reset your password.')}
               </p>
@@ -120,11 +126,10 @@ export const ForgotPassword: React.FC = () => {
             
             <div>
               <h3 className="text-xl font-extrabold text-slate-900 dark:text-white">
-                {t('Đã gửi mã OTP!', 'OTP Sent!')}
+                {t('Đã tiếp nhận yêu cầu', 'Request received')}
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
-                {t('Mã xác minh 4 chữ số đã được gửi tới', 'A 4-digit verification code has been sent to')} <br />
-                <span className="font-bold text-slate-800 dark:text-slate-200">{email}</span>
+                {notice}
               </p>
             </div>
 
@@ -132,7 +137,7 @@ export const ForgotPassword: React.FC = () => {
               onClick={() => navigate('/reset-password', { state: { email } })}
               className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-2xs hover:shadow-xs transition-all cursor-pointer mt-2"
             >
-              {t('Nhập mã 4 số & Đặt lại mật khẩu', 'Enter 4-digit code & Reset password')}
+              {t('Nhập mã 6 số & Đặt lại mật khẩu', 'Enter 6-digit code & Reset password')}
             </button>
           </div>
         )}

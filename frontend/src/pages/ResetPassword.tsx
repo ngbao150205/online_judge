@@ -24,8 +24,8 @@ export const ResetPassword: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (otp.length !== 4) {
-      setError(t('Mã OTP phải gồm đúng 4 chữ số!', 'OTP code must be exactly 4 digits!'));
+    if (otp.length !== 6) {
+      setError(t('Mã OTP phải gồm đúng 6 chữ số!', 'OTP code must be exactly 6 digits!'));
       return;
     }
 
@@ -38,7 +38,7 @@ export const ResetPassword: React.FC = () => {
     setError('');
 
     try {
-      // Gửi request chứa email, mã OTP 4 số và mật khẩu mới
+      // Gửi request chứa email, mã OTP 6 số và mật khẩu mới
       await api.post('/auth/reset-password', {
         email,
         otp,
@@ -79,7 +79,7 @@ export const ResetPassword: React.FC = () => {
             <span>{t('Đặt lại mật khẩu', 'Reset Password')}</span>
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            {t('Nhập mã OTP 4 số đã nhận và mật khẩu mới', 'Enter the 4-digit OTP code received and your new password')}
+            {t('Nhập mã OTP 6 số đã nhận và mật khẩu mới', 'Enter the 6-digit OTP code received and your new password')}
           </p>
         </div>
 
@@ -109,19 +109,19 @@ export const ResetPassword: React.FC = () => {
             </div>
           </div>
 
-          {/* Ô nhập mã OTP 4 chữ số */}
+          {/* Ô nhập mã OTP 6 chữ số */}
           <div>
             <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1 text-center">
-              {t('Mã xác minh OTP (4 chữ số) *', 'OTP Verification Code (4 digits) *')}
+              {t('Mã xác minh OTP (6 chữ số) *', 'OTP Verification Code (6 digits) *')}
             </label>
             <input
               type="text"
               required
-              maxLength={4}
+              maxLength={6}
               pattern="[0-9]*"
               value={otp}
               onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))} // Chỉ cho phép nhập số
-              placeholder="••••"
+              placeholder="••••••"
               className="w-full py-3 bg-slate-50 dark:bg-slate-950 border-2 border-blue-500 dark:border-blue-500 text-slate-900 dark:text-slate-100 rounded-xl text-center text-3xl font-mono tracking-[0.5em] focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
             />
           </div>

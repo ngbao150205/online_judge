@@ -1,9 +1,11 @@
 # Node dependencies
 node_modules/
 
-# Environment variables
+# Environment files and secrets
 .env
-.env.local
+.env.*
+!.env.example
+!.env.*.example
 
 # Build output
 dist/
@@ -18,3 +20,21 @@ build/
 .claude/
 .windsurf/
 skills-lock.json
+
+# Local container backups and private deployment files
+.local/
+
+# Database backups
+*.dump
+*.backup
+*.sql.gz
+
+# Private certificates and keys
+*.pem
+*.p12
+
+# Terraform local state and plans
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan

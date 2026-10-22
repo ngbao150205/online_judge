@@ -1,0 +1,308 @@
+[
+  {
+    "method": "POST",
+    "path": "/auth/register",
+    "handler": "register",
+    "access": "public"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/login",
+    "handler": "login",
+    "access": "public"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/google",
+    "handler": "googleLogin",
+    "access": "public"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/forgot-password",
+    "handler": "forgotPassword",
+    "access": "public"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/reset-password",
+    "handler": "resetPassword",
+    "access": "public"
+  },
+  {
+    "method": "GET",
+    "path": "/auth/me",
+    "handler": "getMe",
+    "access": "authenticated"
+  },
+  {
+    "method": "PUT",
+    "path": "/auth/me",
+    "handler": "updateProfile",
+    "access": "authenticated"
+  },
+  {
+    "method": "PUT",
+    "path": "/auth/change-password",
+    "handler": "changePassword",
+    "access": "authenticated"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/stats",
+    "handler": "getAdminStats",
+    "access": "admin"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/submissions/live",
+    "handler": "getLiveSubmissions",
+    "access": "admin"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/workers",
+    "handler": "getWorkers",
+    "access": "admin"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/alerts",
+    "handler": "getAlerts",
+    "access": "admin"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/analytics",
+    "handler": "getAnalytics",
+    "access": "admin"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/users",
+    "handler": "getAllStudentsAdminController",
+    "access": "admin"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/users",
+    "handler": "createStudentAdminController",
+    "access": "admin"
+  },
+  {
+    "method": "PUT",
+    "path": "/admin/users/:id",
+    "handler": "updateStudentAdminController",
+    "access": "admin"
+  },
+  {
+    "method": "DELETE",
+    "path": "/admin/users/:id",
+    "handler": "deleteStudentAdminController",
+    "access": "admin"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/problems",
+    "handler": "getAdminProblems",
+    "access": "admin"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/problems/:id",
+    "handler": "getAdminProblemDetail",
+    "access": "admin"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/problems",
+    "handler": "createProblem",
+    "access": "admin"
+  },
+  {
+    "method": "PUT",
+    "path": "/admin/problems/:id",
+    "handler": "updateProblem",
+    "access": "admin"
+  },
+  {
+    "method": "DELETE",
+    "path": "/admin/problems/:id",
+    "handler": "deleteProblem",
+    "access": "admin"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/roadmaps",
+    "handler": "getAllRoadmapsForAdmin",
+    "access": "admin"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/roadmaps",
+    "handler": "createRoadmap",
+    "access": "admin"
+  },
+  {
+    "method": "PUT",
+    "path": "/admin/roadmaps/:id",
+    "handler": "updateRoadmap",
+    "access": "admin"
+  },
+  {
+    "method": "DELETE",
+    "path": "/admin/roadmaps/:id",
+    "handler": "deleteRoadmap",
+    "access": "admin"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/categories",
+    "handler": "getCategories",
+    "access": "admin"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/categories",
+    "handler": "createCategory",
+    "access": "admin"
+  },
+  {
+    "method": "PUT",
+    "path": "/admin/categories/:id",
+    "handler": "updateCategory",
+    "access": "admin"
+  },
+  {
+    "method": "DELETE",
+    "path": "/admin/categories/:id",
+    "handler": "deleteCategory",
+    "access": "admin"
+  },
+  {
+    "method": "GET",
+    "path": "/problems",
+    "handler": "getPublicProblems",
+    "access": "authenticated"
+  },
+  {
+    "method": "GET",
+    "path": "/problems/:slug",
+    "handler": "getPublicProblemDetail",
+    "access": "public"
+  },
+  {
+    "method": "GET",
+    "path": "/roadmaps",
+    "handler": "getPublicRoadmaps",
+    "access": "public"
+  },
+  {
+    "method": "GET",
+    "path": "/categories",
+    "handler": "getCategories",
+    "access": "public"
+  },
+  {
+    "method": "POST",
+    "path": "/submissions/run",
+    "handler": "runCustomInput",
+    "access": "authenticated"
+  },
+  {
+    "method": "POST",
+    "path": "/submissions/run-problem",
+    "handler": "runProblem",
+    "access": "authenticated"
+  },
+  {
+    "method": "GET",
+    "path": "/submissions/run-status/:runId",
+    "handler": "getRunStatus",
+    "access": "authenticated"
+  },
+  {
+    "method": "POST",
+    "path": "/submissions",
+    "handler": "submitCode",
+    "access": "authenticated"
+  },
+  {
+    "method": "GET",
+    "path": "/submissions/history",
+    "handler": "getMySubmissions",
+    "access": "authenticated"
+  },
+  {
+    "method": "GET",
+    "path": "/submissions/history/:id",
+    "handler": "getSubmissionDetail",
+    "access": "authenticated"
+  },
+  {
+    "method": "GET",
+    "path": "/submissions/my",
+    "handler": "getMySubmissions",
+    "access": "authenticated"
+  },
+  {
+    "method": "GET",
+    "path": "/submissions/:id",
+    "handler": "getSubmissionDetail",
+    "access": "authenticated"
+  },
+  {
+    "method": "POST",
+    "path": "/ai/explain",
+    "handler": "explainErrorWithAI",
+    "access": "authenticated"
+  },
+  {
+    "method": "GET",
+    "path": "/roadmaps/:id",
+    "handler": "getStudentRoadmapDetail",
+    "access": "authenticated"
+  },
+  {
+    "method": "GET",
+    "path": "/users/profile",
+    "handler": "getMe",
+    "access": "authenticated"
+  },
+  {
+    "method": "PUT",
+    "path": "/users/profile",
+    "handler": "updateProfile",
+    "access": "authenticated"
+  },
+  {
+    "method": "PUT",
+    "path": "/users/change-password",
+    "handler": "changePassword",
+    "access": "authenticated"
+  },
+  {
+    "method": "GET",
+    "path": "/leaderboard",
+    "handler": "getLeaderboard",
+    "access": "public"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/logout",
+    "handler": "logout",
+    "access": "public"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/logout-all",
+    "handler": "logoutAll",
+    "access": "authenticated"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/problems/:id/testcases/versions",
+    "handler": "getTestcaseVersions",
+    "access": "admin"
+  }
+]

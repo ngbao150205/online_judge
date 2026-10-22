@@ -1,3 +1,4 @@
+import { logout } from '../services/session';
 import React, { useState, useEffect } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
@@ -5,7 +6,7 @@ import {
   Menu, X, BookOpen, Route, History, Trophy, Users, Settings,
   Sun, Moon, Globe, Terminal
 } from 'lucide-react';
-import axios from 'axios';
+import api from '../services/api';
 import { useTheme } from '../context/ThemeContext';
 import { useLanguage } from '../context/LanguageContext'; // Import Language Context
 
@@ -26,33 +27,16 @@ export const AppLayout: React.FC = () => {
   let isMounted = true;
 
   const fetchCurrentUser = async () => {
-    const token = localStorage.getItem('token');
-
-    // 🟢 Nếu không có token, lập tức dọn dẹp state và thoát
-    if (!token) {
-      if (isMounted) setUser(null);
-      return;
-    }
-
     try {
-      const res = await axios.get('http://localhost:5001/api/auth/me', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await api.get('/auth/me');
 
       const userData = res?.data?.data || res?.data;
 
       // 🟢 Chỉ cập nhật state nếu component vẫn còn mounted
       if (userData && isMounted) {
         setUser(userData);
-        if (userData.role) {
-          localStorage.setItem('role', userData.role);
-        }
       }
-    } catch (error) {
-      console.error('Lỗi xác thực người dùng:', error);
-      // Dọn dẹp thông tin khi token hết hạn/không hợp lệ
-      localStorage.removeItem('token');
-      localStorage.removeItem('role');
+    } catch {
       if (isMounted) setUser(null);
     }
   };
@@ -65,15 +49,14 @@ export const AppLayout: React.FC = () => {
   };
 }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('role');
+  const handleLogout = async () => {
+    try { await logout(); } catch { alert('Không thể đăng xuất khỏi máy chủ. Vui lòng thử lại.'); return; }
     setUser(null);
     setIsProfileOpen(false);
     navigate('/');
   };
 
-  const isAdmin = user?.role === 'ADMIN' || localStorage.getItem('role') === 'ADMIN';
+  const isAdmin = user?.role === 'ADMIN';
   const displayName = user ? user.name || user.fullName || user.username || user.email || 'User' : '';
   const userInitial = displayName ? displayName.charAt(0).toUpperCase() : 'U';
 

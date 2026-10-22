@@ -1,3 +1,4 @@
+import { API_BASE_URL } from '../config/api';
 import { useEffect, useState } from 'react';
 import {
   X,
@@ -12,6 +13,7 @@ import {
 } from 'lucide-react';
 
 import { useLanguage } from '../context/LanguageContext';
+import { apiFetch } from '../services/api';
 
 type Submission = {
   id: string;
@@ -48,7 +50,6 @@ type SubmissionDetail = Submission & {
 };
 
 type Props = {
-  accessToken: string;
   apiBaseUrl?: string;
 
   // Truyền submissionId mới nhất từ response của nút Nộp bài.
@@ -159,8 +160,7 @@ const cellStyle = {
 };
 
 export default function SubmissionHistory({
-  accessToken,
-  apiBaseUrl = 'http://localhost:5001/api',
+  apiBaseUrl = API_BASE_URL,
   latestSubmissionId,
 }: Props) {
   const [items, setItems] = useState<Submission[]>([]);
@@ -183,13 +183,6 @@ export default function SubmissionHistory({
   }, [latestSubmissionId]);
 
   useEffect(() => {
-    if (!accessToken) {
-      setItems([]);
-      setDetail(null);
-      setError('Bạn cần đăng nhập để xem lịch sử.');
-      return;
-    }
-
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     let stopped = false;
@@ -197,10 +190,7 @@ export default function SubmissionHistory({
     const base = apiBaseUrl.replace(/\/$/, '');
 
     async function request<T>(path: string): Promise<T> {
-      const response = await fetch(`${base}${path}`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
+      const response = await apiFetch(`${base}${path}`, {
         signal: controller.signal,
       });
 
@@ -266,7 +256,7 @@ export default function SubmissionHistory({
       controller.abort();
       if (timer) clearTimeout(timer);
     };
-  }, [accessToken, apiBaseUrl, page, selectedId, refreshKey]);
+  }, [apiBaseUrl, page, selectedId, refreshKey]);
 
   return (
     <section

@@ -38,6 +38,7 @@ export const Register: React.FC = () => {
         name,
         email,
         password,
+        acceptedTerms: true,
       });
 
       if (res.data.success) {

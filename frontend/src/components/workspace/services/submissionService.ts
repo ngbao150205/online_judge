@@ -1,4 +1,6 @@
-const API_BASE = 'http://localhost:5001/api';
+import { API_BASE_URL } from '../../../config/api';
+import { apiFetch } from '../../../services/api';
+const API_BASE = API_BASE_URL;
 
 export interface SubmitCodeParams {
   problemId: string;
@@ -6,29 +8,16 @@ export interface SubmitCodeParams {
   sourceCode: string;
 }
 
-const getHeaders = (): HeadersInit => {
-  const token = localStorage.getItem('token');
-
-  return {
-    'Content-Type': 'application/json',
-    ...(token
-      ? {
-          Authorization: `Bearer ${token}`,
-        }
-      : {}),
-  };
-};
-
 export const submitCode = async ({
   problemId,
   language,
   sourceCode,
 }: SubmitCodeParams): Promise<string> => {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE}/submissions`,
     {
       method: 'POST',
-      headers: getHeaders(),
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         problemId,
         language,
@@ -65,11 +54,11 @@ export const submitCode = async ({
 export const getSubmissionStatus = async (
   submissionId: string
 ) => {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE}/submissions/${submissionId}`,
     {
       method: 'GET',
-      headers: getHeaders(),
+      headers: { 'Content-Type': 'application/json' },
     }
   );
 

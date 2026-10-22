@@ -1,51 +1,14 @@
-import { Response } from 'express';
-import { AuthRequest } from '../../middlewares/auth.middleware';
-import {
-  getPublicRoadmapsService,
-  getStudentRoadmapDetailService,
-} from '../../services/roadmap.student.service';
+import type { Response } from 'express';
+import { sendSuccess, currentUserId } from '../controller.utils.js';
+import type { ControllerRequest } from '../controller.utils.js';
+import { getPublicRoadmapsService, getStudentRoadmapDetailService } from '../../services/roadmap.student.service.js';
 
-export const getPublicRoadmaps = async (req: AuthRequest, res: Response) => {
-  try {
-    const data = await getPublicRoadmapsService();
-    return res.status(200).json({ success: true, data });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: 'Lỗi khi lấy danh sách lộ trình', error });
-  }
-};
+export async function getPublicRoadmaps(req: ControllerRequest, res: Response): Promise<void> {
+  const data = await getPublicRoadmapsService();
+  sendSuccess(res, { data });
+}
 
-export const getStudentRoadmapDetail = async (
-  req: AuthRequest,
-  res: Response
-) => {
-
-  try {
-
-    const userId = req.user?.userId;
-
-    const roadmapId = req.params.id as string;
-
-const roadmap =
-  await getStudentRoadmapDetailService(
-    roadmapId,
-    userId
-  );
-
-
-    return res.json({
-      success:true,
-      data: roadmap
-    });
-
-
-  } catch(error){
-
-    console.error(error);
-
-    return res.status(500).json({
-      success:false,
-      message:"Lỗi lấy roadmap"
-    });
-
-  }
-};
+export async function getStudentRoadmapDetail(req: ControllerRequest, res: Response): Promise<void> {
+  const data = await getStudentRoadmapDetailService(req.params.id, currentUserId(req));
+  sendSuccess(res, { data });
+}

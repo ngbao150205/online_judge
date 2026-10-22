@@ -1,18 +1,141 @@
-version: '3.8'
+name: judge-system-monorepo
+
+x-backend-environment: &backend-environment
+  NODE_ENV: production
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:8080}
+  TRUST_PROXY_HOPS: "1"
+  RATE_LIMIT_ENABLED: "true"
+  SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-604800}
+  TERMS_VERSION: ${TERMS_VERSION:-v1}
+  SUBMISSION_TIMEOUT_SECONDS: ${SUBMISSION_TIMEOUT_SECONDS:-1800}
+  MAINTENANCE_INTERVAL_SECONDS: ${MAINTENANCE_INTERVAL_SECONDS:-5}
+  WORKER_OFFLINE_SECONDS: ${WORKER_OFFLINE_SECONDS:-45}
+  SQS_AUTO_CREATE: "false"
+  AI_API_URL: ${AI_API_URL:-}
+  AI_API_KEY: ${AI_API_KEY:-}
+  AI_MODEL: ${AI_MODEL:-}
+  AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-20000}
+  DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Run node docker/setup-env.mjs}@postgres:5432/${POSTGRES_DB:-judge_db}
+  JWT_SECRET: ${JWT_SECRET:?Run node docker/setup-env.mjs}
+  PORT: "5001"
+  REDIS_URL: redis://redis:6379
+  RUN_TTL_SECONDS: ${RUN_TTL_SECONDS:-3600}
+  RESULT_WORKER_ENABLED: "true"
+  AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+  AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+  SQS_ENDPOINT_URL: ""
+  SQS_QUEUE_URL: ${SQS_QUEUE_URL:?Configure AWS SQS_QUEUE_URL in .env}
+  RESULT_QUEUE_URL: ${RESULT_QUEUE_URL:?Configure AWS RESULT_QUEUE_URL in .env}
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASS: ${SMTP_PASS:-}
 
 services:
   postgres:
     image: postgres:15-alpine
     container_name: judge_postgres
-    restart: always
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: mysecretpassword
-      POSTGRES_DB: judge_db
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run node docker/setup-env.mjs}
+      POSTGRES_DB: ${POSTGRES_DB:-judge_db}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    image: judge-backend:local
+    pull_policy: build
+    build:
+      context: ./backend
+      target: runtime
+    init: true
+    restart: unless-stopped
+    environment: *backend-environment
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-5001}:5001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5001/health',{signal:AbortSignal.timeout(2500)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 90s
+    stop_grace_period: 20s
+
+  sandbox-worker:
+    image: judge-sandbox-worker:local
+    pull_policy: build
+    build:
+      context: ./sandbox
+      dockerfile: worker/Dockerfile
+    init: true
+    restart: unless-stopped
+    environment:
+      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+      SQS_ENDPOINT_URL: ""
+      SQS_QUEUE_URL: ${SQS_QUEUE_URL:?Configure AWS SQS_QUEUE_URL in .env}
+      RESULT_QUEUE_URL: ${RESULT_QUEUE_URL:?Configure AWS RESULT_QUEUE_URL in .env}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      backend:
+        condition: service_healthy
+    stop_grace_period: 90s
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/judge-images-ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 300s
+
+  frontend:
+    image: judge-frontend:local
+    pull_policy: build
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: /api
+        VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+      sandbox-worker:
+        condition: service_healthy
 
 volumes:
   postgres_data:
+    name: ${POSTGRES_VOLUME_NAME:-judge-system-monorepo_postgres_data}
+  redis_data:

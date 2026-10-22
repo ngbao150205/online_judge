@@ -1,3 +1,4 @@
+import { API_BASE_URL } from '../config/api';
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -53,7 +54,7 @@ export const ProblemDetailModal: React.FC<ProblemDetailModalProps> = ({
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  const API_BASE = 'http://localhost:5001/api';
+  const API_BASE = API_BASE_URL;
 
   useEffect(() => {
     if (!isOpen || !slug) return;

@@ -12,5 +12,8 @@ type ResultMessage struct {
 
 	Error string `json:"error"`
 
-	ExecutionTime int64 `json:"executionTime"`
+	ExecutionTime *int64 `json:"executionTime"`
+	MemoryUsed    *int64 `json:"memoryUsed"`
+	CPUTime       *int64 `json:"cpuTime"`
+	CompileTime   *int64 `json:"compileTime"`
 }

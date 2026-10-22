@@ -1,3 +1,4 @@
+import { API_BASE_URL } from '../config/api';
 import React, { useState, useEffect } from 'react';
 import { 
   Users, 
@@ -38,7 +39,7 @@ interface WorkerNode {
   id: string;
   name: string;
   status: 'IDLE' | 'BUSY' | 'OFFLINE';
-  cpuUsage: number;
+  cpuUsage: number | null;
   ramUsage: string;
 }
 
@@ -71,24 +72,23 @@ export const AdminHome: React.FC = () => {
     waPercent: 0, waCount: 0,
     tlePercent: 0, tleCount: 0,
     cePercent: 0, ceCount: 0,
+    otherPercent: 0, otherCount: 0,
     storageUsedGb: 0,
-    storageTotalGb: 100,
+    storageTotalGb: null as number | null,
   });
 
   // Tải dữ liệu từ Database
   const fetchDashboardData = async (isManualRefresh = false) => {
     if (isManualRefresh) setIsRefreshing(true);
     try {
-      const token = localStorage.getItem('token');
-      const authHeader = { headers: { Authorization: `Bearer ${token}` } };
-      const API_BASE = 'http://localhost:5001/api/admin';
+      const API_BASE = `${API_BASE_URL}/admin`;
 
       const [statsRes, feedRes, workersRes, alertsRes, analyticsRes] = await Promise.allSettled([
-        axios.get(`${API_BASE}/stats`, authHeader),
-        axios.get(`${API_BASE}/submissions/live`, authHeader),
-        axios.get(`${API_BASE}/workers`, authHeader),
-        axios.get(`${API_BASE}/alerts`, authHeader),
-        axios.get(`${API_BASE}/analytics`, authHeader),
+        axios.get(`${API_BASE}/stats`),
+        axios.get(`${API_BASE}/submissions/live`),
+        axios.get(`${API_BASE}/workers`),
+        axios.get(`${API_BASE}/alerts`),
+        axios.get(`${API_BASE}/analytics`),
       ]);
 
       if (statsRes.status === 'fulfilled' && statsRes.value.data) {
@@ -257,7 +257,7 @@ export const AdminHome: React.FC = () => {
                   <th className="p-2.5">{t('Mã bài', 'Problem')}</th>
                   <th className="p-2.5">{t('Ngôn ngữ', 'Language')}</th>
                   <th className="p-2.5">{t('Kết quả', 'Result')}</th>
-                  <th className="p-2.5">CPU</th>
+                  <th className="p-2.5">{t('Thời gian chạy', 'Wall time')}</th>
                   <th className="p-2.5 rounded-r-lg">{t('Thời gian', 'Time')}</th>
                 </tr>
               </thead>
@@ -272,8 +272,8 @@ export const AdminHome: React.FC = () => {
                       <td className="p-2.5">
                         <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold inline-block ${
                           sub.result === 'ACCEPTED' ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-900/50' :
-                          sub.result === 'WRONG ANSWER' ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400 border border-rose-200/60 dark:border-rose-900/50' :
-                          sub.result === 'TIME LIMIT' ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-200/60 dark:border-amber-900/50' : 
+                          sub.result === 'WRONG_ANSWER' ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400 border border-rose-200/60 dark:border-rose-900/50' :
+                          sub.result === 'TIME_LIMIT_EXCEEDED' ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-200/60 dark:border-amber-900/50' :
                           'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
                         }`}>
                           {sub.result}
@@ -344,12 +344,22 @@ export const AdminHome: React.FC = () => {
             </div>
           </div>
 
+          <div className="space-y-1">
+            <div className="flex justify-between text-xs font-bold">
+              <span>{t('Lỗi khác (RE / MLE / hệ thống)', 'Other results (RE / MLE / system)')}</span>
+              <span>{resultBreakdown.otherPercent}% ({resultBreakdown.otherCount})</span>
+            </div>
+            <div className="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
+              <div className="bg-violet-500 h-full" style={{ width: `${resultBreakdown.otherPercent}%` }} />
+            </div>
+          </div>
+
           <div className="pt-3 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400 flex justify-between items-center">
             <span className="flex items-center gap-1.5">
-              <Database className="w-3.5 h-3.5 text-slate-400" /> {t('Dung lượng Testcases:', 'Testcase Storage:')}
+              <Database className="w-3.5 h-3.5 text-slate-400" /> {t('Dung lượng Database:', 'Database Storage:')}
             </span>
             <span className="font-bold text-slate-800 dark:text-slate-200">
-              {resultBreakdown.storageUsedGb} GB / {resultBreakdown.storageTotalGb} GB
+              {resultBreakdown.storageUsedGb.toFixed(3)} GiB{resultBreakdown.storageTotalGb !== null ? ` / ${resultBreakdown.storageTotalGb} GiB` : ''}
             </span>
           </div>
         </div>
@@ -384,7 +394,7 @@ export const AdminHome: React.FC = () => {
                   </span>
                 </div>
                 <div className="text-[11px] text-slate-500 dark:text-slate-400 flex justify-between font-mono pt-1 border-t border-slate-200/60 dark:border-slate-800/80">
-                  <span>{t('Tải CPU', 'CPU Load')}: {node.cpuUsage}%</span>
+                  <span>{t('Tải CPU', 'CPU Load')}: {node.cpuUsage === null ? t('Chưa đo', 'Unavailable') : `${node.cpuUsage}%`}</span>
                   <span>RAM: {node.ramUsage}</span>
                 </div>
               </div>

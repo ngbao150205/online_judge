@@ -1,3 +1,4 @@
+import { API_BASE_URL } from '../../../config/api';
 import {
   useEffect,
   useState,
@@ -8,7 +9,7 @@ import axios from 'axios';
 import type { Problem } from '../types';
 
 const API_BASE =
-  'http://localhost:5001/api';
+  API_BASE_URL;
 
 export const useProblem = (
   slug?: string
@@ -33,20 +34,9 @@ export const useProblem = (
       try {
         setLoading(true);
 
-        const token =
-          localStorage.getItem('token');
-
         const response =
           await axios.get(
             `${API_BASE}/problems/${slug}`,
-            {
-              headers: token
-                ? {
-                    Authorization:
-                      `Bearer ${token}`,
-                  }
-                : {},
-            }
           );
 
         if (cancelled) {

@@ -1,90 +1,52 @@
-import { Request, Response } from 'express';
-import { AuthRequest } from '../../middlewares/auth.middleware';
+import type { Response } from 'express';
+import { sendSuccess, currentUserId } from '../controller.utils.js';
+import type { ControllerRequest } from '../controller.utils.js';
 import {
-  registerService,
-  loginService,
-  googleLoginService, // 👈 Bổ sung Service Google Login
-  getMeService,
-  forgotPasswordService,
-  resetPasswordService,
-  updateProfileService,
-  changePasswordService
-} from '../../services/auth.service';
+  registerService, loginService, googleLoginService, forgotPasswordService, resetPasswordService,
+  getMeService, updateProfileService, changePasswordService,
+} from '../../services/auth.service.js';
+import { clearSessionCookie, setSessionCookie } from '../../utils/session-cookie.js';
 
-export const register = async (req: Request, res: Response) => {
-  try {
-    const result = await registerService(req.body);
-    return res.status(201).json({ success: true, message: 'Đăng ký tài khoản thành công', data: result });
-  } catch (error: any) {
-    return res.status(400).json({ success: false, message: error.message });
-  }
-};
+export async function register(req: ControllerRequest<Parameters<typeof registerService>[0]>, res: Response): Promise<void> {
+  const data = await registerService(req.body);
+  sendSuccess(res, { message: 'Đăng ký tài khoản thành công', data }, 201);
+}
 
-export const login = async (req: Request, res: Response) => {
-  try {
-    const result = await loginService(req.body);
-    return res.json({ success: true, message: 'Đăng nhập thành công', data: result });
-  } catch (error: any) {
-    return res.status(400).json({ success: false, message: error.message });
-  }
-};
+export async function login(req: ControllerRequest<Parameters<typeof loginService>[0]>, res: Response): Promise<void> {
+  const { token, ...data } = await loginService(req.body);
+  setSessionCookie(res, token);
+  sendSuccess(res, { message: 'Đăng nhập thành công', data });
+}
 
-// 🟢 BỔ SUNG: Xử lý Đăng nhập Google
-export const googleLogin = async (req: Request, res: Response) => {
-  try {
-    const { credential } = req.body;
-    if (!credential) {
-      return res.status(400).json({ success: false, message: 'Thiếu Google Credential' });
-    }
+export async function googleLogin(req: ControllerRequest<{ credential: string; acceptedTerms: true }>, res: Response): Promise<void> {
+  const { token, ...data } = await googleLoginService(req.body.credential, req.body.acceptedTerms);
+  setSessionCookie(res, token);
+  sendSuccess(res, { message: 'Đăng nhập Google thành công', data });
+}
 
-    const result = await googleLoginService(credential);
-    return res.json({ success: true, message: 'Đăng nhập Google thành công', data: result });
-  } catch (error: any) {
-    return res.status(400).json({ success: false, message: error.message });
-  }
-};
+export async function getMe(req: ControllerRequest, res: Response): Promise<void> {
+  const data = await getMeService(currentUserId(req));
+  sendSuccess(res, { data });
+}
 
-export const getMe = async (req: AuthRequest, res: Response) => {
-  try {
-    const user = await getMeService(req.user?.userId);
-    return res.json({ success: true, data: user });
-  } catch (error: any) {
-    return res.status(400).json({ success: false, message: error.message });
-  }
-};
+export async function forgotPassword(req: ControllerRequest<{ email: string }>, res: Response): Promise<void> {
+  const message = await forgotPasswordService(req.body.email);
+  sendSuccess(res, { message });
+}
 
-export const forgotPassword = async (req: Request, res: Response) => {
-  try {
-    const message = await forgotPasswordService(req.body.email);
-    return res.json({ success: true, message });
-  } catch (error: any) {
-    return res.status(400).json({ success: false, message: error.message });
-  }
-};
+export async function resetPassword(req: ControllerRequest<Parameters<typeof resetPasswordService>[0]>, res: Response): Promise<void> {
+  const message = await resetPasswordService(req.body);
+  clearSessionCookie(res);
+  sendSuccess(res, { message });
+}
 
-export const resetPassword = async (req: Request, res: Response) => {
-  try {
-    const message = await resetPasswordService(req.body);
-    return res.json({ success: true, message });
-  } catch (error: any) {
-    return res.status(400).json({ success: false, message: error.message });
-  }
-};
+export async function updateProfile(req: ControllerRequest<{ name: string }>, res: Response): Promise<void> {
+  const data = await updateProfileService(currentUserId(req), req.body.name);
+  sendSuccess(res, { message: 'Cập nhật thành công', data });
+}
 
-export const updateProfile = async (req: AuthRequest, res: Response) => {
-  try {
-    const updatedUser = await updateProfileService(req.user?.userId!, req.body.name);
-    return res.json({ success: true, message: 'Cập nhật thành công', data: updatedUser });
-  } catch (error: any) {
-    return res.status(400).json({ success: false, message: error.message });
-  }
-};
-
-export const changePassword = async (req: AuthRequest, res: Response) => {
-  try {
-    const message = await changePasswordService(req.user?.userId!, req.body);
-    return res.json({ success: true, message });
-  } catch (error: any) {
-    return res.status(400).json({ success: false, message: error.message });
-  }
-};
+export async function changePassword(req: ControllerRequest<Parameters<typeof changePasswordService>[1]>, res: Response): Promise<void> {
+  const message = await changePasswordService(currentUserId(req), req.body);
+  clearSessionCookie(res);
+  sendSuccess(res, { message });
+}

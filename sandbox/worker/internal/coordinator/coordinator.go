@@ -2,7 +2,6 @@ package coordinator
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log"
 	"strings"
@@ -30,6 +29,8 @@ type Queue interface {
 }
 
 type Coordinator struct {
+	OnState func(string)
+
 	Queue Queue
 
 	Router router.LanguageRouter
@@ -73,26 +74,6 @@ func (c Coordinator) Start(ctx context.Context) {
 				time.Sleep(time.Second)
 
 				continue
-			}
-
-			// =============================================
-			// DEBUG PAYLOAD
-			// =============================================
-
-			jobJSON, errJSON :=
-				json.MarshalIndent(
-					job,
-					"",
-					"  ",
-				)
-
-			if errJSON == nil {
-
-				log.Printf(
-					"\n================ PAYLOAD ================\n%s\n==========================================\n",
-					string(jobJSON),
-				)
-
 			}
 
 			// =============================================
@@ -160,19 +141,13 @@ func (c Coordinator) Start(ctx context.Context) {
 			// EXECUTE SANDBOX
 			// =============================================
 
-			startTime :=
-				time.Now()
-
-			result :=
-				executor.Execute(
-					*job,
-				)
-
-			execDuration :=
-				time.Since(
-					startTime,
-				).Milliseconds()
-
+			if c.OnState != nil {
+				c.OnState("BUSY")
+			}
+			result := executor.Execute(*job)
+			if c.OnState != nil {
+				c.OnState("IDLE")
+			}
 			// =============================================
 			// SYSTEM ERROR
 			// Không publish.
@@ -258,20 +233,7 @@ func (c Coordinator) Start(ctx context.Context) {
 			// LOG RESULT
 			// =============================================
 
-			log.Printf(
-				"submission=%s testcase=%s language=%s type=%s checker=%s status=%s timeLimit=%dms memory=%dMB duration=%dms output=%q error=%q",
-				job.SubmissionID,
-				job.TestcaseID,
-				job.Language,
-				job.SubmissionType,
-				job.CheckerType,
-				result.Status,
-				job.TimeLimit,
-				job.MemoryLimit,
-				execDuration,
-				result.Output,
-				result.Error,
-			)
+			log.Printf("submission=%s testcase=%s status=%s", job.SubmissionID, job.TestcaseID, result.Status)
 
 			// =============================================
 			// PUBLISH RESULT
@@ -290,7 +252,8 @@ func (c Coordinator) Start(ctx context.Context) {
 
 					Error: result.Error,
 
-					ExecutionTime: execDuration,
+					ExecutionTime: result.ExecutionTime,
+					MemoryUsed:    result.MemoryUsed, CPUTime: result.CPUTime, CompileTime: result.CompileTime,
 				}
 
 			if err :=

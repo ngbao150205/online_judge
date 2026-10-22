@@ -1,7 +1,8 @@
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
+import { env } from './env.js';
 
 // Lấy URI kết nối từ biến môi trường (.env) hoặc dùng mặc định localhost
-const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+const REDIS_URL = env.REDIS_URL;
 
 // Khởi tạo client kết nối Redis
 export const redisClient = new Redis(REDIS_URL, {
@@ -19,5 +20,5 @@ redisClient.on('connect', () => {
 
 // Bắt sự kiện lỗi kết nối
 redisClient.on('error', (err) => {
-  console.error('❌ Lỗi kết nối Redis:', err.message);
+  console.error('[Redis] Lỗi kết nối:', err.name);
 });

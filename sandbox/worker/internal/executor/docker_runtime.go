@@ -1,12 +1,15 @@
 package executor
 
 import (
+	"bytes"
 	"context"
 	"fmt"
-	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // DockerRuntime quản lý vòng đời của sandbox container.
@@ -21,9 +24,10 @@ type DockerRuntime struct {
 // - > 0: dùng đúng giới hạn được truyền vào
 func (d DockerRuntime) CreateContainer(
 	name string,
-	filePath string,
 	memoryLimitMB int,
 ) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
 
 	// =====================================================
 	// MEMORY LIMIT
@@ -39,7 +43,7 @@ func (d DockerRuntime) CreateContainer(
 	// CREATE CONTAINER
 	// =====================================================
 
-	cmd := exec.Command(
+	cmd := exec.CommandContext(ctx,
 		"docker",
 		"create",
 
@@ -103,11 +107,8 @@ func (d DockerRuntime) CreateContainer(
 		"/tmp:rw,exec,uid=1000,gid=1000,mode=1777",
 
 		// =================================================
-		// SOURCE CODE
+		// SOURCE CODE is streamed after start; no host bind mount.
 		// =================================================
-		"-v",
-		filepath.Dir(filePath)+":/code:ro",
-
 		// =================================================
 		// IMAGE
 		// =================================================
@@ -127,12 +128,32 @@ func (d DockerRuntime) CreateContainer(
 	return strings.TrimSpace(string(output)), nil
 }
 
+// CopySource streams the worker-local file into sandbox tmpfs. This works when
+// the worker runs in a container and the Docker daemon cannot see its /tmp.
+func (d DockerRuntime) CopySource(name, filePath string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	source, err := os.Open(filePath)
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+	cmd := exec.CommandContext(ctx, "docker", "exec", "-i", name, "tee", "/workspace/"+filepath.Base(filePath))
+	cmd.Stdin = source
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("copy source into sandbox: %w", err)
+	}
+	return nil
+}
+
 // StartContainer chuyển container từ Created → Running.
 func (d DockerRuntime) StartContainer(
 	name string,
 ) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
 
-	cmd := exec.Command(
+	cmd := exec.CommandContext(ctx,
 		"docker",
 		"start",
 		name,
@@ -141,226 +162,74 @@ func (d DockerRuntime) StartContainer(
 	return cmd.Run()
 }
 
-// ExecContext thực thi command bên trong container.
-//
-// stdin được truyền trực tiếp vào STDIN của process.
-//
-// Ví dụ:
-//
-//	input := "bao\n"
-//
-//	command:
-//
-//	python3 /code/main.py
-//
-// Python:
-//
-//	name = input()
-//
-// sẽ nhận:
-//
-//	name == "bao"
-//
-// Context tự động hủy docker exec khi vượt TimeLimit.
-func (d DockerRuntime) ExecContext(
-	ctx context.Context,
-	name string,
-	command string,
-	stdin string,
-) ([]byte, error) {
-
-	// =====================================================
-	// DOCKER EXEC
-	// =====================================================
-	//
-	// -i = giữ STDIN mở
-	//
-	// Không dùng "-t" vì sandbox không cần pseudo-TTY.
-	//
-	// Không dùng:
-	//
-	// echo "input" | python ...
-	//
-	// vì cách đó dễ lỗi với multiline input và
-	// ký tự đặc biệt.
-	//
-	// =====================================================
-
-	cmd := exec.CommandContext(
-		ctx,
-		"docker",
-		"exec",
-		"-i",
-		name,
-		"bash",
-		"-c",
-		command,
-	)
-
-	// =====================================================
-	// TRUYỀN INPUT VÀO STDIN
-	// =====================================================
-
-	stdinPipe, err := cmd.StdinPipe()
-
-	if err != nil {
-		return nil, fmt.Errorf(
-			"create stdin pipe: %w",
-			err,
-		)
+// ExecSeparated drains stdout/stderr concurrently via os/exec and bounds output.
+func (d DockerRuntime) ExecSeparated(ctx context.Context, name, command, stdin string) ([]byte, []byte, error) {
+	cmd := exec.CommandContext(ctx, "docker", "exec", "-i", name, "bash", "-c", command)
+	cmd.Stdin = strings.NewReader(stdin)
+	out, diagnostics := &boundedBuffer{}, &boundedBuffer{}
+	cmd.Stdout, cmd.Stderr = out, diagnostics
+	err := cmd.Run()
+	if out.exceeded || diagnostics.exceeded {
+		err = fmt.Errorf("output exceeds 64 KiB per stream")
 	}
-
-	// =====================================================
-	// CAPTURE STDOUT + STDERR
-	// =====================================================
-
-	output, err := captureCommandOutput(
-		cmd,
-		stdinPipe,
-		stdin,
-	)
-
-	return output, err
+	return out.Bytes(), diagnostics.Bytes(), err
 }
 
-// captureCommandOutput chạy command, truyền stdin,
-// đồng thời gom stdout và stderr.
-//
-// Stdout + stderr được gom chung để Python traceback,
-// compiler error hoặc runtime error có thể được trả
-// về frontend.
-func captureCommandOutput(
-	cmd *exec.Cmd,
-	stdinPipe io.WriteCloser,
-	input string,
-) ([]byte, error) {
-
-	// =====================================================
-	// STDOUT
-	// =====================================================
-
-	stdout, err := cmd.StdoutPipe()
-
-	if err != nil {
-		_ = stdinPipe.Close()
-
-		return nil, fmt.Errorf(
-			"create stdout pipe: %w",
-			err,
-		)
-	}
-
-	// =====================================================
-	// STDERR
-	// =====================================================
-
-	stderr, err := cmd.StderrPipe()
-
-	if err != nil {
-		_ = stdinPipe.Close()
-
-		return nil, fmt.Errorf(
-			"create stderr pipe: %w",
-			err,
-		)
-	}
-
-	// =====================================================
-	// START PROCESS
-	// =====================================================
-
-	if err := cmd.Start(); err != nil {
-		_ = stdinPipe.Close()
-
-		return nil, err
-	}
-
-	// =====================================================
-	// WRITE INPUT TO STDIN
-	// =====================================================
-
-	_, writeErr := io.WriteString(
-		stdinPipe,
-		input,
-	)
-
-	closeErr := stdinPipe.Close()
-
-	if writeErr != nil {
-		// Không return ngay vì process có thể vẫn còn
-		// output/error cần đọc.
-	}
-
-	if closeErr != nil {
-		// Tương tự, tiếp tục đọc output.
-	}
-
-	// =====================================================
-	// READ STDOUT + STDERR
-	// =====================================================
-
-	stdoutData, stdoutErr := io.ReadAll(stdout)
-
-	stderrData, stderrErr := io.ReadAll(stderr)
-
-	// =====================================================
-	// WAIT FOR PROCESS
-	// =====================================================
-
-	waitErr := cmd.Wait()
-
-	// =====================================================
-	// COMBINE OUTPUT
-	// =====================================================
-
-	result := make([]byte, 0, len(stdoutData)+len(stderrData))
-
-	result = append(result, stdoutData...)
-	result = append(result, stderrData...)
-
-	// =====================================================
-	// RETURN FIRST RELEVANT ERROR
-	// =====================================================
-
-	if waitErr != nil {
-		return result, waitErr
-	}
-
-	if writeErr != nil {
-		return result, fmt.Errorf(
-			"write stdin: %w",
-			writeErr,
-		)
-	}
-
-	if stdoutErr != nil {
-		return result, fmt.Errorf(
-			"read stdout: %w",
-			stdoutErr,
-		)
-	}
-
-	if stderrErr != nil {
-		return result, fmt.Errorf(
-			"read stderr: %w",
-			stderrErr,
-		)
-	}
-
-	return result, nil
+func (d DockerRuntime) ExecContext(ctx context.Context, name, command, stdin string) ([]byte, error) {
+	out, diagnostics, err := d.ExecSeparated(ctx, name, command, stdin)
+	return append(out, diagnostics...), err
 }
 
-// RemoveContainer xóa sandbox sau khi xử lý xong.
-func (d DockerRuntime) RemoveContainer(
-	name string,
-) error {
+type boundedBuffer struct {
+	bytes.Buffer
+	exceeded bool
+}
 
-	cmd := exec.Command(
-		"docker",
-		"rm",
-		"-f",
-		name,
-	)
+func (b *boundedBuffer) Write(data []byte) (int, error) {
+	size := len(data)
+	remaining := 65536 - b.Len()
+	if size > remaining {
+		b.exceeded = true
+	}
+	if remaining > 0 {
+		b.Buffer.Write(data[:min(size, remaining)])
+	}
+	return size, nil // Continue draining the pipe; never deadlock a noisy workload.
+}
 
-	return cmd.Run()
+type ResourceMetrics struct{ MemoryPeakBytes, CPUUsageUsec, OOMKills int64 }
+
+func parseResourceMetrics(data string) (ResourceMetrics, error) {
+	values := map[string]int64{}
+	for _, line := range strings.Split(data, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			continue
+		}
+		value, err := strconv.ParseInt(fields[1], 10, 64)
+		if err == nil {
+			values[fields[0]] = value
+		}
+	}
+	peak, peakFound := values["memory_peak"]
+	cpu, cpuFound := values["usage_usec"]
+	oom, oomFound := values["oom_kill"]
+	if !peakFound || !cpuFound || !oomFound {
+		return ResourceMetrics{}, fmt.Errorf("cgroup v2 metrics unavailable")
+	}
+	return ResourceMetrics{MemoryPeakBytes: peak, CPUUsageUsec: cpu, OOMKills: oom}, nil
+}
+func (d DockerRuntime) ReadMetrics(name string) (ResourceMetrics, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, "docker", "exec", name, "sh", "-c", `printf 'memory_peak '; cat /sys/fs/cgroup/memory.peak; cat /sys/fs/cgroup/cpu.stat; cat /sys/fs/cgroup/memory.events`).Output()
+	if err != nil {
+		return ResourceMetrics{}, err
+	}
+	return parseResourceMetrics(string(output))
+}
+func (d DockerRuntime) RemoveContainer(name string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return exec.CommandContext(ctx, "docker", "rm", "-f", name).Run()
 }

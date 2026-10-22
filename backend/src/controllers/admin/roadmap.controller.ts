@@ -1,55 +1,27 @@
-import { Request, Response } from 'express';
+import type { Response } from 'express';
+import { sendSuccess } from '../controller.utils.js';
+import type { ControllerRequest } from '../controller.utils.js';
 import {
-  getAllRoadmapsAdminService,
-  createRoadmapAdminService,
-  updateRoadmapAdminService,
-  deleteRoadmapAdminService,
-} from '../../services/roadmap.admin.service';
+  getAllRoadmapsAdminService, createRoadmapAdminService, updateRoadmapAdminService, deleteRoadmapAdminService,
+} from '../../services/roadmap.admin.service.js';
 
-export const getAllRoadmapsForAdmin = async (req: Request, res: Response) => {
-  try {
-    const data = await getAllRoadmapsAdminService();
-    return res.status(200).json({ success: true, data });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: 'Lỗi server khi lấy lộ trình', error });
-  }
-};
+export async function getAllRoadmapsForAdmin(req: ControllerRequest, res: Response): Promise<void> {
+  const data = await getAllRoadmapsAdminService();
+  sendSuccess(res, { data });
+}
 
-export const createRoadmap = async (req: Request, res: Response) => {
-  try {
-    const { title, description, problems } = req.body;
-    if (!title) {
-      return res.status(400).json({ success: false, message: 'Tên lộ trình không được để trống' });
-    }
-    const data = await createRoadmapAdminService({ title, description, problems });
-    return res.status(201).json({ success: true, data });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: 'Lỗi server khi tạo lộ trình', error });
-  }
-};
+export async function createRoadmap(req: ControllerRequest<Parameters<typeof createRoadmapAdminService>[0]>, res: Response): Promise<void> {
+  const { title, description, problems } = req.body;
+  const data = await createRoadmapAdminService({ title, description, problems });
+  sendSuccess(res, { data }, 201);
+}
 
-export const updateRoadmap = async (req: Request<{ id: string }>, res: Response) => {
-  try {
-    const roadmapId = req.params.id;
-    const data = await updateRoadmapAdminService(roadmapId, req.body);
-    return res.status(200).json({ success: true, data });
-  } catch (error: any) {
-    if (error.message === 'ROADMAP_NOT_FOUND') {
-      return res.status(404).json({ success: false, message: 'Lộ trình không tồn tại' });
-    }
-    return res.status(500).json({ success: false, message: 'Lỗi server khi cập nhật lộ trình', error });
-  }
-};
+export async function updateRoadmap(req: ControllerRequest<Parameters<typeof updateRoadmapAdminService>[1]>, res: Response): Promise<void> {
+  const data = await updateRoadmapAdminService(req.params.id, req.body);
+  sendSuccess(res, { data });
+}
 
-export const deleteRoadmap = async (req: Request<{ id: string }>, res: Response) => {
-  try {
-    const roadmapId = req.params.id;
-    await deleteRoadmapAdminService(roadmapId);
-    return res.status(200).json({ success: true, message: 'Xóa lộ trình thành công' });
-  } catch (error: any) {
-    if (error.message === 'ROADMAP_NOT_FOUND') {
-      return res.status(404).json({ success: false, message: 'Lộ trình không tồn tại' });
-    }
-    return res.status(500).json({ success: false, message: 'Lỗi server khi xóa lộ trình', error });
-  }
-};
+export async function deleteRoadmap(req: ControllerRequest, res: Response): Promise<void> {
+  await deleteRoadmapAdminService(req.params.id);
+  sendSuccess(res, { message: 'Xóa lộ trình thành công' });
+}

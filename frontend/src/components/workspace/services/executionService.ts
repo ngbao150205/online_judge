@@ -1,4 +1,6 @@
-const API_BASE = 'http://localhost:5001/api';
+import { API_BASE_URL } from '../../../config/api';
+import { apiFetch } from '../../../services/api';
+const API_BASE = API_BASE_URL;
 
 export interface RunCodeParams {
   problemId?: string;
@@ -7,30 +9,17 @@ export interface RunCodeParams {
   customInput: string;
 }
 
-const getHeaders = (): HeadersInit => {
-  const token = localStorage.getItem('token');
-
-  return {
-    'Content-Type': 'application/json',
-    ...(token
-      ? {
-          Authorization: `Bearer ${token}`,
-        }
-      : {}),
-  };
-};
-
 export const runCode = async ({
   problemId,
   language,
   sourceCode,
   customInput,
 }: RunCodeParams): Promise<string> => {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE}/submissions/run`,
     {
       method: 'POST',
-      headers: getHeaders(),
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         problemId,
         language,
@@ -75,11 +64,11 @@ export const runProblem = async ({
   language,
   sourceCode,
 }: RunProblemParams): Promise<string> => {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE}/submissions/run-problem`,
     {
       method: 'POST',
-      headers: getHeaders(),
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         problemId,
         language,
@@ -115,11 +104,11 @@ export const runProblem = async ({
 export const getRunStatus = async (
   runId: string
 ) => {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE}/submissions/run-status/${runId}`,
     {
       method: 'GET',
-      headers: getHeaders(),
+      headers: { 'Content-Type': 'application/json' },
     }
   );
 

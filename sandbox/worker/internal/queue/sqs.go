@@ -25,7 +25,8 @@ func (q SQSQueue) Receive(ctx context.Context) (*model.Job, *string, error) {
 			QueueUrl:            aws.String(q.QueueURL),
 			MaxNumberOfMessages: 1,
 			WaitTimeSeconds:     20,
-			VisibilityTimeout:   30,
+			// Covers the API's 60s execution limit plus compilation/container setup.
+			VisibilityTimeout: 120,
 			MessageSystemAttributeNames: []types.MessageSystemAttributeName{
 				types.MessageSystemAttributeNameApproximateReceiveCount,
 			},

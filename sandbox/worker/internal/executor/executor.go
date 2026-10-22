@@ -2,14 +2,17 @@ package executor
 
 import (
 	"errors"
-	"fmt"
 	"os/exec"
-	"time"
 
 	"kltn-worker/internal/model"
 )
 
 type Result struct {
+	ExecutionTime *int64
+	MemoryUsed    *int64 // KiB, peak cgroup memory during execution
+	CPUTime       *int64 // milliseconds of cgroup CPU usage
+	CompileTime   *int64 // milliseconds, compiler container lifecycle excluded
+
 	Status model.Status
 
 	Output string
@@ -19,30 +22,6 @@ type Result struct {
 
 type Executor interface {
 	Execute(job model.Job) Result
-}
-
-type LocalExecutor struct {
-}
-
-func (e LocalExecutor) Execute(job model.Job) Result {
-
-	fmt.Println(
-		"Executing submission:",
-		job.SubmissionID,
-	)
-
-	fmt.Println(
-		"Language:",
-		job.Language,
-	)
-
-	// giả lập thời gian chạy sandbox
-	time.Sleep(5 * time.Second)
-
-	return Result{
-		Status: model.RUN_SUCCESS,
-		Output: "Hello from executor",
-	}
 }
 
 func getExitCode(err error) int {

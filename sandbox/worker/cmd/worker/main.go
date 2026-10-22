@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"kltn-worker/internal/coordinator"
@@ -37,7 +38,7 @@ func main() {
 	}
 
 	log.Printf("DEBUG ENV SQS_QUEUE_URL=[%s]", os.Getenv("SQS_QUEUE_URL"))
-	
+
 	queueURL := os.Getenv("SQS_QUEUE_URL")
 	if queueURL == "" {
 		log.Fatal("LỖI NHIÊM TRỌNG: Yêu cầu biến môi trường SQS_QUEUE_URL")
@@ -61,7 +62,11 @@ func main() {
 		log.Fatalf("LỖI NHIỆM TRỌNG: Không thể tải AWS SDK Config: %v", err)
 	}
 
-	sqsClient := sqs.NewFromConfig(cfg)
+	sqsClient := sqs.NewFromConfig(cfg, func(options *sqs.Options) {
+		if endpoint := os.Getenv("SQS_ENDPOINT_URL"); endpoint != "" {
+			options.BaseEndpoint = &endpoint
+		}
+	})
 
 	// 4. Khởi tạo Publisher và Queue Component
 	resultPublisher := result.Publisher{
@@ -89,7 +94,16 @@ func main() {
 	}
 
 	// 6. Khởi tạo Judge Coordinator
+	workerID := os.Getenv("WORKER_ID")
+	if workerID == "" {
+		workerID, _ = os.Hostname()
+	}
+	heartbeat := &result.Heartbeat{Publisher: resultPublisher, WorkerID: workerID}
+	var heartbeats sync.WaitGroup
+	heartbeats.Add(1)
+	go func() { defer heartbeats.Done(); heartbeat.Run(ctx) }()
 	judgeCoordinator := coordinator.Coordinator{
+		OnState:         heartbeat.SetState,
 		Queue:           jobQueue,
 		Router:          languageRouter,
 		Matcher:         matcher.Matcher{},
@@ -102,6 +116,8 @@ func main() {
 
 	// 7. Thực thi Coordinator cho đến khi Context bị hủy (bởi SIGINT / SIGTERM)
 	judgeCoordinator.Start(ctx)
+	cancel()
+	heartbeats.Wait()
 
 	// Log xác nhận hoàn tất giải phóng tài nguyên và tắt ứng dụng
 	log.Println("\n==================================================")
