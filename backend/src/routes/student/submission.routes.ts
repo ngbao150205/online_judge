@@ -4,6 +4,7 @@ import {
   getMySubmissions, getSubmissionDetail,
 } from '../../controllers/student/submission.controller.js';
 import { runCustomInput, runProblem, getRunStatus } from '../../controllers/student/execution.controller.js';
+import { getPlaygroundHistory, getPlaygroundRunDetail } from '../../controllers/student/playground-history.controller.js';
 import { authenticate } from '../../middlewares/auth.middleware.js';
 import { executionRateLimit } from '../../middlewares/rate-limit.middleware.js';
 
@@ -14,10 +15,12 @@ const router = Router();
 
 router.use(authenticate);
 
-// Trial execution; does not create official submission history.
+// PLAYGROUND runs have durable history; PROBLEM_TRIAL runs remain temporary in Redis.
 router.post('/run', executionRateLimit, validateBody(runBody), runCustomInput);
 router.post('/run-problem', executionRateLimit, validateBody(problemExecutionBody), runProblem);
 router.get('/run-status/:runId', validateParams(runIdParams), getRunStatus);
+router.get('/playground-history', validateQuery(historyQuery), getPlaygroundHistory);
+router.get('/playground-history/:runId', validateParams(runIdParams), getPlaygroundRunDetail);
 
 // Official submission and history.
 router.post('/', executionRateLimit, validateBody(problemExecutionBody), submitCode);

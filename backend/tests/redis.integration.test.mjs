@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { test } from 'node:test';
+import prisma from '../dist/src/config/db.js';
 import { redisClient } from '../dist/src/config/redis.js';
 import { initializeRun, runOwnerKey, runResultKey, markRunFailed } from '../dist/src/services/execution/run-store.service.js';
 import { applyRunResult } from '../dist/src/services/execution/result.service.js';
@@ -11,6 +12,8 @@ import { getRunStatusService } from '../dist/src/services/execution/status.servi
 const enabled = process.env.RUN_REDIS_INTEGRATION === 'true';
 if (!enabled) redisClient.disconnect();
 test('real Redis: atomic concurrent results, duplicate delivery, owner and expiry', { skip: !enabled }, async () => {
+  const findPlaygroundRun = prisma.playgroundRun.findUnique;
+  prisma.playgroundRun.findUnique = async () => null;
   const runId = `run-${randomUUID()}`;
   const owner = randomUUID();
   const failedRunId = `run-${randomUUID()}`;
@@ -40,6 +43,7 @@ test('real Redis: atomic concurrent results, duplicate delivery, owner and expir
     await assert.rejects(getRunStatusService(owner, runId), error => error.code === 'RUN_NOT_FOUND');
   } finally {
     await redisClient.del(...keys); // Only unique keys created by this test.
+    prisma.playgroundRun.findUnique = findPlaygroundRun;
     redisClient.disconnect();
   }
 });

@@ -222,6 +222,18 @@
     "access": "authenticated"
   },
   {
+    "method": "GET",
+    "path": "/submissions/playground-history",
+    "handler": "getPlaygroundHistory",
+    "access": "authenticated"
+  },
+  {
+    "method": "GET",
+    "path": "/submissions/playground-history/:runId",
+    "handler": "getPlaygroundRunDetail",
+    "access": "authenticated"
+  },
+  {
     "method": "POST",
     "path": "/submissions",
     "handler": "submitCode",

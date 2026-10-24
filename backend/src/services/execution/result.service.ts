@@ -1,4 +1,5 @@
 import { redisClient } from '../../config/redis.js';
+import prisma from '../../config/db.js';
 import { env } from '../../config/env.js';
 import type { JudgeResult, ResultDisposition } from '../../types/judge-result.js';
 import { runOwnerKey, runResultKey } from './run-store.service.js';
@@ -47,4 +48,26 @@ return 1
 export async function applyRunResult(result: JudgeResult): Promise<ResultDisposition> {
     const code = Number(await redisClient.eval(applyRunResultScript, 2, runResultKey(result.submissionId), runOwnerKey(result.submissionId), JSON.stringify(result), env.RUN_TTL_SECONDS));
     return code === -1 ? 'retry' : 'ack'; // Expired/duplicate results can be acknowledged.
+}
+
+export async function applyPlaygroundResult(result: JudgeResult): Promise<ResultDisposition> {
+    const id = result.submissionId.slice(5);
+    const run = await prisma.playgroundRun.findUnique({ where: { id }, select: { id: true, status: true } });
+    if (!run) return 'ack'; // Stale result for a removed/unknown Playground record.
+    if (run.status !== 'PENDING' && run.status !== 'RUNNING') return 'ack';
+
+    await prisma.playgroundRun.updateMany({
+        where: { id, status: { in: ['PENDING', 'RUNNING'] } },
+        data: {
+            status: result.status,
+            output: result.output ?? '',
+            error: result.error ?? '',
+            executionTime: result.executionTime == null ? null : Math.trunc(result.executionTime),
+            memoryUsed: result.memoryUsed == null ? null : Math.trunc(result.memoryUsed),
+            cpuTime: result.cpuTime == null ? null : Math.trunc(result.cpuTime),
+            compileTime: result.compileTime == null ? null : Math.trunc(result.compileTime),
+            completedAt: new Date(),
+        },
+    });
+    return 'ack'; // Duplicate or late results must not overwrite a final/expired run.
 }

@@ -1,7 +1,7 @@
 import type { Message } from '@aws-sdk/client-sqs';
 import { judgeResultSchema } from '../types/judge-result.js';
 import type { ResultDisposition } from '../types/judge-result.js';
-import { applyRunResult } from './execution/result.service.js';
+import { applyPlaygroundResult, applyRunResult } from './execution/result.service.js';
 import { applySubmissionResult } from './submission/result.service.js';
 import { heartbeatSchema, recordHeartbeat } from './worker-monitor.service.js';
 export async function processResultMessage(message: Pick<Message, 'Body'>): Promise<ResultDisposition> {
@@ -24,6 +24,8 @@ export async function processResultMessage(message: Pick<Message, 'Body'>): Prom
         console.warn('[Result] Bỏ message sai định dạng');
         return 'retry';
     }
+    if (parsed.data.submissionId.startsWith('play-'))
+        return applyPlaygroundResult(parsed.data);
     if (parsed.data.submissionId.startsWith('run-'))
         return applyRunResult(parsed.data);
     await applySubmissionResult(parsed.data);

@@ -11,16 +11,21 @@ import { closeInfrastructure } from './dist/src/config/shutdown.js';
 if (process.env.JUDGE_INTEGRATION_TEST !== 'true') throw new Error('Temporary test stack required');
 const base = 'http://frontend/api';
 async function request(path, { token, body, method = body ? 'POST' : 'GET', status = 200, extraHeaders = {} } = {}) {
-  const response = await fetch(base + path, { method, headers: { ...extraHeaders, ...(body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(10000) });
+  const response = await fetch(base + path, { method, headers: { ...extraHeaders, ...(body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Cookie: `judge_session=${encodeURIComponent(token)}` } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(10000) });
   const data = await response.json();
   assert.equal(response.status, status, `${path}: ${JSON.stringify(data)}`);
   return { data, response };
 }
+function sessionToken(response) {
+  const value = response.headers.get('set-cookie')?.match(/(?:^|,\s*)judge_session=([^;,\s]*)/)?.[1];
+  assert.ok(value, 'expected login response to set the HttpOnly session cookie');
+  return decodeURIComponent(value);
+}
 try {
   const email = `${randomUUID()}@example.invalid`, password = 'individual-password-123';
-  const registered = await request('/auth/register', { body: { name: 'Security fixture', email, password }, status: 201 });
-  const userId = registered.data.data.user.id;
-  let token = registered.data.data.token;
+  const registered = await request('/auth/register', { body: { name: 'Security fixture', email, password, acceptedTerms: true }, status: 201 });
+  const userId = registered.data.data.id;
+  let token = sessionToken((await request('/auth/login', { body: { email, password } })).response);
   await request('/admin/stats', { token, status: 403 });
   await prisma.user.update({ where: { id: userId }, data: { role: 'ADMIN' } });
   await request('/admin/stats', { token });
@@ -29,12 +34,12 @@ try {
   await request('/auth/logout', { token, method: 'POST' });
   await request('/auth/me', { token, status: 401 });
   const login = await request('/auth/login', { body: { email, password } });
-  token = login.data.data.token;
+  token = sessionToken(login.response);
   const second = await issueSession(await prisma.user.findUnique({ where: { id: userId } }));
   await request('/auth/logout-all', { token, method: 'POST' });
   await request('/auth/me', { token, status: 401 });
   await request('/auth/me', { token: second, status: 401 });
-  token = (await request('/auth/login', { body: { email, password } })).data.data.token;
+  token = sessionToken((await request('/auth/login', { body: { email, password } })).response);
   console.info('PASS: live role changes, single-session logout and logout-all invalidate access');
 
   const allowed = await request('/categories', { extraHeaders: { Origin: 'http://localhost:8080' } });

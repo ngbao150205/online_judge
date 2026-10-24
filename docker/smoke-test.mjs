@@ -4,13 +4,15 @@ import { randomUUID } from 'node:crypto';
 import { issueSession } from './dist/src/services/auth/session.service.js';
 import prisma from './dist/src/config/db.js';
 import { redisClient } from './dist/src/config/redis.js';
+import { runOwnerKey, runResultKey } from './dist/src/services/execution/run-store.service.js';
 import { closeInfrastructure } from './dist/src/config/shutdown.js';
 
 if (process.env.JUDGE_INTEGRATION_TEST !== 'true') throw new Error('Chỉ chạy trên stack kiểm thử tạm bằng docker/test.sh');
 const user = await prisma.user.create({ data: { name: 'Sandbox smoke test', email: `${randomUUID()}@example.invalid`, pwd: '' } });
 const token = await issueSession(user);
 const runs = [];
-const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+const trialRuns = [];
+const headers = { 'Content-Type': 'application/json', Cookie: `judge_session=${encodeURIComponent(token)}` };
 const base = 'http://frontend/api';
 async function jsonRequest(path, options) {
   const response = await fetch(`${base}${path}`, { ...options, signal: AbortSignal.timeout(10000) });
@@ -49,8 +51,38 @@ try {
     if (entry.language === 'cpp') assert.ok(result.compileTime > 0);
     console.info(`PASS: ${entry.name} => ${result.status}${entry.output ? `, output=${result.output.trim()}` : ''}`);
   }
+
+  const history = await jsonRequest('/submissions/playground-history?page=1', { headers });
+  assert.deepEqual(new Set(history.data.map(run => run.id)), new Set(runs));
+  const saved = await jsonRequest(`/submissions/playground-history/${runs[0]}`, { headers });
+  assert.equal(saved.data.sourceCode, cases[0].sourceCode);
+  assert.equal(saved.data.customInput, cases[0].customInput);
+  assert.equal(saved.data.status, cases[0].status);
+  console.info('PASS: Playground source, stdin, output and status persist in PostgreSQL history');
+
+  const problem = await prisma.problem.create({ data: {
+    title: 'Trial smoke test', slug: `trial-smoke-${randomUUID()}`,
+    description: 'Temporary public testcase for the isolated integration stack.',
+    testcases: { create: [{ inputData: '7 13\n', expectedOutput: '20\n', isHidden: false }] },
+  }, include: { testcases: true } });
+  const trial = await jsonRequest('/submissions/run-problem', { method: 'POST', headers, body: JSON.stringify({
+    problemId: problem.id, language: 'python', sourceCode: cases[0].sourceCode,
+  }) });
+  trialRuns.push(trial.runId);
+  const trialDeadline = Date.now() + 60000;
+  let trialResult;
+  while (Date.now() < trialDeadline) {
+    trialResult = await jsonRequest(`/submissions/run-status/${trial.runId}`, { headers });
+    if (!['PENDING', 'RUNNING'].includes(trialResult.status)) break;
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  assert.equal(trialResult?.status, 'ACCEPTED');
+  assert.ok(await redisClient.get(runOwnerKey(trial.runId)));
+  assert.ok(await redisClient.get(runResultKey(trial.runId)));
+  assert.equal(await prisma.playgroundRun.findUnique({ where: { id: trial.runId.slice(4) } }), null);
+  console.info('PASS: PROBLEM_TRIAL remains in Redis and does not create Playground history');
 } finally {
   try {
-    if (runs.length) await redisClient.del(...runs.flatMap(id => [`run_owner:${id}`, `run_result:${id}`]));
+    if (trialRuns.length) await redisClient.del(...trialRuns.flatMap(id => [runOwnerKey(id), runResultKey(id)]));
   } finally { await closeInfrastructure(); }
 }

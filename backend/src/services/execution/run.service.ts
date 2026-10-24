@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import prisma from '../../config/db.js';
+import { env } from '../../config/env.js';
 import { initializeRun, markRunFailed } from './run-store.service.js';
 import { AppError } from '../../errors/app-error.js';
 import { requireJudgeQueue, sendJudgeJob } from '../judge-queue.service.js';
@@ -8,25 +9,36 @@ export async function runCustomInputService(userId: string, input: CustomRunInpu
     requireJudgeQueue();
     let timeLimit = 2000;
     let memoryLimit = 256;
+    let problemTitle: string | null = null;
     if (input.problemId) {
         const problem = await prisma.problem.findUnique({
-            where: { id: input.problemId }, select: { isActive: true, deletedAt: true, timeLimit: true, memoryLimit: true },
+            where: { id: input.problemId }, select: { id: true, title: true, isActive: true, deletedAt: true, timeLimit: true, memoryLimit: true },
         });
         if (!problem || !problem.isActive || problem.deletedAt) {
             throw new AppError(404, 'Bài tập không tồn tại hoặc đã đóng', 'PROBLEM_NOT_FOUND');
         }
-        ({ timeLimit, memoryLimit } = problem);
+        ({ timeLimit, memoryLimit, title: problemTitle } = problem);
     }
-    const runId = `run-${randomUUID()}`;
-    await initializeRun(userId, runId, { submissionId: runId, status: 'PENDING' });
+    const id = randomUUID();
+    const runId = `play-${id}`;
+    const deadlineAt = new Date(Date.now() + env.SUBMISSION_TIMEOUT_SECONDS * 1000);
+    await prisma.playgroundRun.create({ data: {
+        id, userId, problemId: input.problemId || null, problemTitle,
+        language: input.language, sourceCode: input.sourceCode, customInput: input.customInput ?? '',
+        status: 'PENDING', deadlineAt,
+    } });
     try {
-    await sendJudgeJob({
-        submissionId: runId, problemId: input.problemId || null, testcaseId: '',
-        submissionType: 'PLAYGROUND', checkerType: '', language: input.language, code: input.sourceCode,
-        timeLimit, memoryLimit, input: input.customInput ?? '', expectedOutput: '', isCustomInput: true,
-    });
+        await sendJudgeJob({
+            submissionId: runId, problemId: input.problemId || null, testcaseId: '',
+            submissionType: 'PLAYGROUND', checkerType: '', language: input.language, code: input.sourceCode,
+            timeLimit, memoryLimit, input: input.customInput ?? '', expectedOutput: '', isCustomInput: true,
+        });
     } catch {
-        try { await markRunFailed(runId); } catch { console.error("[Run] Không thể ghi lỗi gửi job"); }
+        try {
+            await prisma.playgroundRun.updateMany({ where: { id, status: 'PENDING' }, data: {
+                status: 'SYSTEM_ERROR', error: 'Không thể hoàn tất gửi yêu cầu chạy thử', completedAt: new Date(),
+            } });
+        } catch { console.error('[Run] Không thể ghi lỗi gửi job'); }
         throw new AppError(503, "Không thể gửi yêu cầu chạy thử", "RUN_DISPATCH_FAILED", { runId });
     }
     return { runId };

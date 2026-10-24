@@ -6,7 +6,7 @@ Tài liệu này mô tả ba thao tác trong workspace theo API và mã hiện t
 2. Chạy thử bài tập trên testcase công khai.
 3. Nộp bài chính thức để chấm toàn bộ testcase.
 
-Hai luồng đầu chỉ giữ kết quả tạm trong Redis. Luồng thứ ba tạo bản ghi submission và kết quả testcase trong PostgreSQL, đồng thời đưa công việc vào transactional outbox.
+PLAYGROUND tạo bản ghi lịch sử bền vững trong PostgreSQL. PROBLEM_TRIAL chỉ giữ trạng thái và kết quả tạm trong Redis theo TTL. Luồng nộp chính thức tạo submission và kết quả testcase trong PostgreSQL, đồng thời đưa công việc vào transactional outbox.
 
 ## 1. Thành phần và công cụ
 
@@ -17,12 +17,12 @@ Hai luồng đầu chỉ giữ kết quả tạm trong Redis. Luồng thứ ba t
 | HTTP client | frontend/src/services/api.ts, frontend/src/config/api.ts | apiFetch gửi cookie phiên với credentials: include; API mặc định dùng prefix /api. |
 | API backend | Express, TypeScript; backend/src/app.ts, routes/student/submission.routes.ts | Mount endpoint, xác thực, giới hạn tần suất và kiểm tra body. |
 | Controller/service | backend/src/controllers/student/{execution,submission}.controller.ts; backend/src/services/{execution,submission}/ | Lấy user hiện tại, điều phối nghiệp vụ và định dạng HTTP response. |
-| Database | PostgreSQL qua Prisma; backend/prisma/schema.prisma | Lưu submission chính thức, kết quả testcase và outbox. |
-| Kết quả tạm | Redis; services/execution/run-store.service.ts | Lưu quyền sở hữu run và kết quả chạy thử có TTL, mặc định 3600 giây. |
+| Database | PostgreSQL qua Prisma; backend/prisma/schema.prisma | Lưu PlaygroundRun, submission chính thức, kết quả testcase và outbox. |
+| Kết quả tạm | Redis; services/execution/run-store.service.ts | Chỉ lưu quyền sở hữu/trạng thái và kết quả PROBLEM_TRIAL theo TTL, mặc định 3600 giây. |
 | Hàng đợi | AWS SQS; services/judge-queue.service.ts, services/outbox.service.ts | Chuyển job sang worker; outbox giúp lưu submission và job một cách nguyên tử. |
 | Chấm mã | Go worker trong sandbox/worker/ | Nhận job, chọn Python/C++, chạy và kiểm tra output, gửi kết quả về result queue. |
 | Cô lập chương trình | Docker qua sandbox/worker/internal/executor/docker_runtime.go | Mỗi lần chạy tạo sandbox riêng, giới hạn CPU/RAM, tắt network, bỏ Linux capabilities, filesystem chỉ đọc và giới hạn process. |
-| Nhận kết quả | Backend result worker; backend/src/workers/result.worker.ts, services/result.service.ts | Đọc result queue, ghi kết quả run vào Redis hoặc kết quả chính thức vào PostgreSQL. |
+| Nhận kết quả | Backend result worker; backend/src/workers/result.worker.ts, services/result.service.ts | Đọc result queue; cập nhật PlaygroundRun hoặc submission trong PostgreSQL, còn PROBLEM_TRIAL được tổng hợp trong Redis. |
 
 Cả ba POST endpoint đều yêu cầu đăng nhập bằng session cookie, giới hạn 30 yêu cầu mỗi phút trên mỗi user, và chỉ nhận language là python hoặc cpp. sourceCode tối đa 64 KiB; stdin tối đa 64 KiB. Backend kiểm tra body bằng Zod trước khi gọi service.
 
@@ -55,16 +55,16 @@ problemId là tùy chọn. Khi chạy trong sandbox độc lập, giao diện b�
 1. SandboxWorkspace gọi runCustomCode trong useCodeExecution.
 2. executionService.runCode gửi POST trên tới backend.
 3. submission.routes.ts áp dụng authenticate, executionRateLimit, validateBody(runBody).
-4. runCustomInput gọi runCustomInputService. Service tạo ID dạng run-<UUID>, ghi owner và trạng thái ban đầu vào Redis, rồi gửi một job PLAYGROUND vào AWS SQS.
+4. runCustomInput gọi runCustomInputService. Service tạo ID dạng play-<UUID>, ghi user, problem context nếu có, ngôn ngữ, source code, stdin và trạng thái PENDING vào bảng PlaygroundRun, rồi gửi một job PLAYGROUND vào AWS SQS.
 5. Go worker nhận job, biên dịch nếu là C++, tạo sandbox Docker, chạy chương trình với stdin đã gửi. Với PLAYGROUND, worker trả output chương trình, không so sánh với đáp án.
-6. Worker gửi result tới result queue. Backend result worker nhận kết quả và cập nhật run trong Redis.
-7. Giao diện poll GET /api/submissions/run-status/:runId. Run chỉ đọc được bởi user tạo run và tự hết hạn theo RUN_TTL_SECONDS.
+6. Worker gửi result tới result queue. Backend result worker tìm PlaygroundRun theo UUID và ghi trạng thái, output/error, thời gian chạy, bộ nhớ, CPU và thời gian biên dịch vào PostgreSQL. Kết quả trùng/đến muộn không ghi đè run đã kết thúc.
+7. Giao diện poll GET /api/submissions/run-status/:runId. API đọc PostgreSQL và chỉ trả run cho đúng user sở hữu. Run được giữ để xem trong lịch sử, không hết hạn theo RUN_TTL_SECONDS; maintenance chuyển run bị treo quá deadline sang SYSTEM_ERROR.
 
 Job gửi vào SQS có dạng:
 
 ~~~json
 {
-  "submissionId": "run-2c46c122-3d01-42d0-bc37-3e0b19d98e4a",
+  "submissionId": "play-2c46c122-3d01-42d0-bc37-3e0b19d98e4a",
   "problemId": null,
   "testcaseId": "",
   "submissionType": "PLAYGROUND",
@@ -89,7 +89,7 @@ POST thành công trả HTTP 200:
 {
   "success": true,
   "message": "Đã gửi yêu cầu chạy thử, đang xử lý",
-  "runId": "run-2c46c122-3d01-42d0-bc37-3e0b19d98e4a"
+  "runId": "play-2c46c122-3d01-42d0-bc37-3e0b19d98e4a"
 }
 ~~~
 
@@ -98,7 +98,7 @@ Trong khi worker chưa trả kết quả, poll trả:
 ~~~json
 {
   "success": true,
-  "runId": "run-2c46c122-3d01-42d0-bc37-3e0b19d98e4a",
+  "runId": "play-2c46c122-3d01-42d0-bc37-3e0b19d98e4a",
   "status": "PENDING",
   "message": "Hệ thống đang xử lý mã nguồn..."
 }
@@ -109,7 +109,7 @@ Khi hoàn tất, response run đơn có các trường ở top-level:
 ~~~json
 {
   "success": true,
-  "runId": "run-2c46c122-3d01-42d0-bc37-3e0b19d98e4a",
+  "runId": "play-2c46c122-3d01-42d0-bc37-3e0b19d98e4a",
   "status": "RUN_SUCCESS",
   "output": "42\n",
   "stdout": "42\n",
@@ -123,6 +123,17 @@ Khi hoàn tất, response run đơn có các trường ở top-level:
 ~~~
 
 Các trị số ví dụ minh họa cấu trúc. memoryUsed do worker đo theo KiB; executionTime, cpuTime, compileTime tính bằng millisecond. Các trường đo có thể là null nếu worker không có số đo tương ứng. Trạng thái lỗi có thể gồm CE, RE, TLE, MLE, SYSTEM_ERROR.
+
+### Lịch sử PLAYGROUND
+
+Các endpoint yêu cầu đăng nhập và chỉ truy cập dữ liệu của user hiện tại:
+
+~~~http
+GET /api/submissions/playground-history?page=1
+GET /api/submissions/playground-history/:runId
+~~~
+
+Endpoint danh sách phân trang 10 lượt mới nhất; chi tiết trả lại source code, stdin, output/error và metrics. Trang **Lịch sử → Playground** dùng các endpoint này và tự refresh khi một lượt còn PENDING/RUNNING. Đây là lịch sử riêng với trang bài nộp chính thức.
 
 ## 3. Chạy thử bài tập trên testcase công khai
 
@@ -156,7 +167,7 @@ problemId bắt buộc. customInput không được gửi trong luồng này: ba
 4. runProblemService xác thực bài còn hoạt động, lấy time/memory limit, checker và danh sách testcase công khai.
 5. Backend tạo runId, ghi trạng thái tổng hợp ban đầu vào Redis, rồi gửi một job PROBLEM_TRIAL cho mỗi testcase công khai.
 6. Go worker chạy từng job trong sandbox và so output theo checker của bài (TOKENS hoặc FLOAT).
-7. Backend nhận từng result và cập nhật mảng results, completed, passed, failed trong Redis. Đây vẫn là run tạm, không tạo lịch sử submission trong PostgreSQL.
+7. Backend nhận từng result và cập nhật mảng results, completed, passed, failed trong Redis. Đây vẫn là run tạm; không tạo PlaygroundRun hay lịch sử submission trong PostgreSQL.
 8. Giao diện poll cùng endpoint /api/submissions/run-status/:runId và hiển thị tiến độ từng testcase.
 
 Message SQS tương ứng cho một testcase:
@@ -288,7 +299,7 @@ Worker gửi result message về backend, ví dụ:
 }
 ~~~
 
-Đây là message nội bộ trên result queue. Backend xác thực cấu trúc trước khi xử lý. Nếu submissionId bắt đầu bằng run-, kết quả được ghi Redis; nếu là UUID submission chính thức, kết quả được ghi PostgreSQL.
+Đây là message nội bộ trên result queue. Backend xác thực cấu trúc trước khi xử lý. `play-<UUID>` định danh PLAYGROUND và cập nhật PostgreSQL; `run-<UUID>` dành cho PROBLEM_TRIAL và được tổng hợp trong Redis. UUID thuần của submission chính thức được ghi PostgreSQL theo bảng submission/result.
 
 ### HTTP response và đọc kết quả
 

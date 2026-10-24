@@ -1,6 +1,6 @@
 # Đánh giá mức độ triển khai theo mục tiêu đề tài
 
-**Ngày rà soát:** 22/10/2026  
+**Ngày rà soát:** 23/10/2026
 **Cơ sở đánh giá:** mã nguồn, cấu hình Docker, tests và tài liệu nằm trong repository. Trạng thái môi trường cloud bên ngoài repository không thể xác nhận chỉ từ mã nguồn.
 
 ## Kết luận tổng quan
@@ -20,13 +20,13 @@ React workspace
   -> container Docker tạm cho Python/C++
   -> AWS SQS result queue
   -> Backend result consumer
-  -> Redis cho run thử / PostgreSQL cho submission chính thức
+  -> PostgreSQL cho PLAYGROUND và submission chính thức / Redis TTL cho PROBLEM_TRIAL
   -> Frontend poll và hiển thị kết quả
 ~~~
 
 Có ba luồng phân biệt trong [SUBMISSION_FLOWS.md](SUBMISSION_FLOWS.md):
 
-- Chạy với stdin tự nhập: một job PLAYGROUND; kết quả tạm trong Redis.
+- Chạy với stdin tự nhập: một job PLAYGROUND; metadata, mã nguồn và kết quả lưu trong PostgreSQL để xem lịch sử.
 - Chạy thử testcase công khai: job PROBLEM_TRIAL theo testcase công khai; kết quả tạm trong Redis.
 - Nộp chính thức: tạo submission, testcase results và outbox trong cùng transaction; worker chấm tất cả testcase chưa xóa, gồm hidden tests.
 
@@ -39,7 +39,7 @@ Có ba luồng phân biệt trong [SUBMISSION_FLOWS.md](SUBMISSION_FLOWS.md):
 | Viết và chạy code trực tuyến cho ít nhất hai ngôn ngữ | **Đã triển khai** | Workspace hỗ trợ Python và C++; có sandbox stdin và workspace theo bài. Thêm ngôn ngữ vẫn cần executor, image/checker và test mới. |
 | Trạng thái biên dịch, thực thi, testcase | **Đã triển khai** | Có CE, RE, WA, TLE, MLE, AC, SYSTEM_ERROR; chi tiết từng testcase, output và metrics được trả theo chính sách API. |
 | Public và hidden testcases | **Đã triển khai** | Chạy thử bài lấy testcase công khai; nộp chính thức lấy toàn bộ testcase chưa xóa. |
-| Lịch sử bài nộp và tiến độ học tập | **Đã triển khai một phần** | Submission chính thức, kết quả và roadmap progress lưu PostgreSQL. Các lần chạy playground/trial chỉ lưu Redis theo TTL, không có lịch sử chạy bền vững. |
+| Lịch sử bài nộp, chạy Playground và tiến độ học tập | **Đã triển khai** | Submission chính thức, kết quả, Playground runs (mã nguồn, stdin, trạng thái, output và metrics) cùng roadmap progress lưu PostgreSQL. PROBLEM_TRIAL vẫn chỉ lưu Redis theo TTL. PLAYGROUND chưa có chính sách retention/xóa tự động. |
 | Thực thi mã không tin cậy và giới hạn tài nguyên | **Đã triển khai một phần** | Docker sandbox riêng; CPU 1 core, memory/swap limit, PID limit 64, network none, cap-drop ALL, read-only rootfs, no-new-privileges và tmpfs. Có TLE/MLE, stdout/stderr được giới hạn 64 KiB mỗi luồng. |
 | Cô lập syscall bằng seccomp | **Một phần / cần minh chứng** | Không thấy cấu hình seccomp profile riêng trong lệnh tạo container; hiện dựa vào Docker default seccomp profile cùng các giới hạn khác. Nếu báo cáo yêu cầu chứng minh seccomp, cần xác minh profile thực tế trên host và lưu minh chứng. |
 | Xử lý output quá lớn | **Một phần** | Bộ đệm stdout/stderr được chặn ở 64 KiB và tiếp tục drain để tránh phình RAM; hiện lỗi vượt ngưỡng được gom thành lỗi thực thi, chưa có trạng thái/output-limit riêng để giải thích rõ cho người học. |
@@ -57,7 +57,6 @@ Có ba luồng phân biệt trong [SUBMISSION_FLOWS.md](SUBMISSION_FLOWS.md):
 ### Giới hạn an toàn sandbox cần thể hiện trung thực
 
 Cấu hình hiện có các giới hạn mạnh ở cấp Docker/cgroup và syscall mặc định của Docker, nhưng không đồng nghĩa với một sandbox đa tầng đã được pentest. Worker được mount Docker socket để tạo container; đây là quyền quản trị daemon ở phía worker host, nên worker host cần được cô lập khỏi API/database và không được chia sẻ với workload người dùng. Khi báo cáo, phân biệt rõ các biện pháp đang có, profile seccomp thực tế và những kiểm thử đã chạy.
-
 Mã worker giới hạn output thu thập ở 64 KiB cho stdout và stderr. Đây là giới hạn bộ nhớ lưu output, không phải trạng thái OLE riêng. Cần bổ sung hành vi kết thúc workload hoặc phân loại riêng nếu yêu cầu đề tài bắt buộc xử lý quá nhiều output.
 
 ## Những phần đã có thể trình bày/demo
@@ -95,7 +94,6 @@ Phân tích kiến trúc đề xuất, luồng DNS/TLS, worker Docker, autoscali
 
 ### Ưu tiên 3: Khép các thiếu hụt chức năng
 
-- Nếu yêu cầu “lịch sử chạy” áp dụng cho cả run thử, lưu run metadata/kết quả lâu bền theo user; có retention/cleanup phù hợp thay cho Redis TTL đơn thuần.
 - Bổ sung structured judge context cho AI: problem statement, trạng thái testcase, compile/runtime error, giới hạn và metrics cần thiết; không gửi hidden expected output hoặc dữ liệu nhạy cảm không cần thiết.
 - Lập benchmark AI với lỗi đã biết, rubric và review thủ công.
 - Quyết định chính sách hidden tests sau khi chấm; hiện detail endpoint trả chi tiết hidden testcase sau khi toàn bộ testcase đạt.

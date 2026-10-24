@@ -111,7 +111,7 @@ docker compose ps -a
 docker compose logs --tail=100 backend sandbox-worker
 ```
 
-Trong giao diện, người dùng có thể chạy code với stdin, chạy thử testcase công khai, nộp bài chính thức và xem kết quả. Job nộp bài đi qua AWS SQS; kết quả được lưu trong PostgreSQL. Các lần chạy thử được lưu tạm theo TTL trong Redis.
+Trong giao diện, người dùng có thể chạy code với stdin, chạy thử testcase công khai, nộp bài chính thức và xem kết quả. PLAYGROUND và bài nộp chính thức được lưu trong PostgreSQL để xem lịch sử; PROBLEM_TRIAL chỉ giữ trạng thái/kết quả tạm theo TTL trong Redis.
 
 ## Dừng, khởi động lại và dữ liệu
 

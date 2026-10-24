@@ -113,7 +113,7 @@ Quyền runtime trên hai queue: sqs:SendMessage, sqs:ReceiveMessage, sqs:Delete
 
 PostgreSQL giữ volume **judge-system-monorepo_postgres_data**, container judge_postgres, mount /var/lib/postgresql/data. Redis giữ volume của dự án. Đổi POSTGRES_VOLUME_NAME sẽ chọn database khác; volume mới bắt đầu rỗng. Password/user/database trong `.env` phải khớp volume đã tồn tại; thay biến POSTGRES_PASSWORD không tự đổi password trong database.
 
-Đã có 5 migration, gồm backend_reliability thêm session/outbox/version/soft delete/metrics/FK RESTRICT. Dữ liệu lịch sử được giữ; memoryUsed=0 cũ chuyển null vì chưa đo. JWT/OTP trước migration reliability cần đăng nhập/yêu cầu mã mới. Sau khi đã nâng cấp, khởi động lại không tự thu hồi session.
+Repository hiện có 7 migration; `playground_run_history` tạo bảng lưu lịch sử chạy PLAYGROUND, còn PROBLEM_TRIAL vẫn dùng Redis TTL. Các migration reliability trước đó thêm session/outbox/version/soft delete/metrics/FK RESTRICT. Dữ liệu lịch sử được giữ; memoryUsed=0 cũ chuyển null vì chưa đo. JWT/OTP trước migration reliability cần đăng nhập/yêu cầu mã mới. Sau khi đã nâng cấp, khởi động lại không tự thu hồi session.
 
 Backup thủ công:
 

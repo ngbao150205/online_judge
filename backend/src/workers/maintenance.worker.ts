@@ -1,6 +1,7 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { env } from '../config/env.js';
 import { cleanupExpiredSessions, dispatchOutboxBatch, reconcileSubmissions } from '../services/outbox.service.js';
+import { reconcileExpiredPlaygroundRuns } from '../services/execution/history.service.js';
 
 export async function runMaintenanceWorker(signal: AbortSignal) {
   let lastCleanup = 0;
@@ -9,6 +10,7 @@ export async function runMaintenanceWorker(signal: AbortSignal) {
       const dispatched = await dispatchOutboxBatch(signal);
       if (signal.aborted) break;
       await reconcileSubmissions();
+      await reconcileExpiredPlaygroundRuns();
       if (Date.now() - lastCleanup > 3600000) { await cleanupExpiredSessions(); lastCleanup = Date.now(); }
       if (dispatched === 10) continue;
     } catch (error) { console.error('[Maintenance] Sẽ thử lại:', error instanceof Error ? error.name : 'UnknownError'); }

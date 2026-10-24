@@ -60,7 +60,7 @@ const validBodies = {
 };
 
 
-test('51 API routes (48 existing and 3 additions) preserve handlers, parameters and access rules', async t => {
+test('53 API routes preserve handlers, parameters and access rules', async t => {
   const app = express();
   app.use(express.json());
   app.use('/api', apiRoutes);

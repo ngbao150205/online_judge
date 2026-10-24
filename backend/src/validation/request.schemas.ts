@@ -14,7 +14,7 @@ const language = z.enum(['python', 'cpp']);
 const optionalProblemId = uuid.nullish();
 
 export const idParams = z.object({ id: uuid });
-export const runIdParams = z.object({ runId: z.string().regex(/^run-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) });
+export const runIdParams = z.object({ runId: z.string().regex(/^(?:run|play)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) });
 export const slugParams = z.object({ slug: z.string().min(1).max(250) });
 
 export const registerBody = z.object({ name, email, password: newPassword, acceptedTerms: z.literal(true) });

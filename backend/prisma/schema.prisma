@@ -67,7 +67,8 @@ model User {
   tokenVersion         Int       @default(0)
   sessions             AuthSession[]
 
-  submissions Submission[]
+  submissions    Submission[]
+  playgroundRuns PlaygroundRun[]
 
   roadmapProgress RoadmapProgress[]
 
@@ -100,6 +101,7 @@ model Problem {
   categories      ProblemCategory[]
   testcases       Testcase[]
   submissions     Submission[]
+  playgroundRuns  PlaygroundRun[]
   roadmapProblems RoadmapProblem[]
 
   roadmapProgress RoadmapProgress[]
@@ -135,8 +137,7 @@ model Testcase {
   @@map("testcases")
 }
 
-// Lưu lịch sử nộp chính thức.
-// PLAYGROUND và PROBLEM_TRIAL hiện lưu kết quả tạm trong Redis.
+// Lưu lịch sử nộp bài chính thức.
 model Submission {
   id             String           @id @default(uuid()) @db.Uuid
   userId         String           @db.Uuid
@@ -166,6 +167,35 @@ model Submission {
   completedRoadmaps RoadmapProgress[]
 
   @@map("submissions")
+}
+
+// Lượt chạy Playground được lưu bền để người học xem lại lịch sử.
+// PROBLEM_TRIAL vẫn chỉ lưu trạng thái/kết quả tạm trong Redis.
+model PlaygroundRun {
+  id            String    @id @db.Uuid
+  userId        String    @db.Uuid
+  problemId     String?   @db.Uuid
+  problemTitle  String?
+  language      String
+  sourceCode    String    @db.Text
+  customInput   String    @db.Text
+  status        String    @default("PENDING")
+  output        String?   @db.Text
+  error         String?   @db.Text
+  executionTime Int?
+  memoryUsed    Int?
+  cpuTime       Int?
+  compileTime   Int?
+  createdAt     DateTime  @default(now())
+  completedAt   DateTime?
+  deadlineAt    DateTime
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  problem Problem? @relation(fields: [problemId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([status, deadlineAt])
+  @@map("playground_runs")
 }
 
 // Tạo các hàng PENDING trước khi gửi job vào SQS.

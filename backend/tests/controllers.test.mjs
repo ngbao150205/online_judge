@@ -67,21 +67,30 @@ test('actual controllers delegate business logic and preserve execution/submissi
       return { status: response.status, data: await response.json() };
     }
 
-    await t.test('custom run sends source and stdin, without official DB history', async t => {
+    await t.test('custom run stores durable Playground history and dispatches the PLAYGROUND job', async t => {
       const jobs = [];
+      let savedRun;
+      mockMethod(t, prisma.playgroundRun, 'create', async query => { savedRun = query.data; return query.data; });
       mockMethod(t, sqsClient, 'send', async command => { jobs.push(JSON.parse(command.input.MessageBody)); });
       mockMethod(t, prisma.submission, 'create', () => { throw new Error('Must not create official submission'); });
+      const redisWritesBefore = redisClient.multi.mock.callCount();
       const response = await request('POST', '/submissions/run', {
         language: 'cpp', sourceCode: 'int main() {}\n', customInput: '4 7 -2 11\n',
       });
       assert.equal(response.status, 200);
-      assert.match(response.data.runId, /^run-/);
+      assert.match(response.data.runId, /^play-/);
       assert.equal(jobs[0].submissionId, response.data.runId);
       assert.equal(jobs[0].submissionType, 'PLAYGROUND');
       assert.equal(jobs[0].input, '4 7 -2 11\n');
       assert.equal(jobs[0].code, 'int main() {}\n');
       assert.equal(jobs[0].timeLimit, 2000);
       assert.equal(jobs[0].memoryLimit, 256);
+      assert.equal(savedRun.userId, userId);
+      assert.equal(savedRun.language, 'cpp');
+      assert.equal(savedRun.sourceCode, 'int main() {}\n');
+      assert.equal(savedRun.customInput, '4 7 -2 11\n');
+      assert.equal(savedRun.status, 'PENDING');
+      assert.equal(redisClient.multi.mock.callCount(), redisWritesBefore);
     });
 
     await t.test('trial selects public tests and initializes Redis before dispatch', async t => {
@@ -202,6 +211,7 @@ test('actual controllers delegate business logic and preserve execution/submissi
 
     await t.test('Redis status preserves pending, stdout aliases and trial counts', async t => {
       let stored = null;
+      mockMethod(t, prisma.playgroundRun, 'findUnique', async () => null);
       mockMethod(t, redisClient, 'get', async key => key.startsWith('run_owner:') ? userId : stored);
       const path = `/submissions/run-status/run-${userId}`;
       assert.equal((await request('GET', path)).data.status, 'PENDING');
@@ -210,6 +220,27 @@ test('actual controllers delegate business logic and preserve execution/submissi
       assert.equal(done.data.stdout, '20\n'); assert.equal(done.data.memoryUsed, null);
       stored = JSON.stringify({ total: 2, completed: 1, passed: 1, failed: 0, results: [] });
       assert.equal((await request('GET', path)).data.completed, 1);
+    });
+
+    await t.test('Playground history endpoints are persistent and owner-scoped', async t => {
+      const runId = `play-${submissionId}`;
+      mockMethod(t, prisma.playgroundRun, 'count', async query => { assert.deepEqual(query.where, { userId }); return 1; });
+      mockMethod(t, prisma.playgroundRun, 'findMany', async query => {
+        assert.equal(query.skip, 0);
+        return [{ id: submissionId, problemTitle: null, language: 'python', status: 'RUN_SUCCESS', createdAt: new Date(), completedAt: new Date(), executionTime: 5, memoryUsed: 10 }];
+      });
+      const list = await request('GET', '/submissions/playground-history');
+      assert.equal(list.status, 200);
+      assert.equal(list.data.data[0].id, runId);
+      assert.equal(list.data.pagination.total, 1);
+
+      mockMethod(t, prisma.playgroundRun, 'findFirst', async query => {
+        assert.deepEqual(query.where, { id: submissionId, userId });
+        return { id: submissionId, problemTitle: null, language: 'python', sourceCode: 'print(1)', customInput: '', status: 'RUN_SUCCESS', output: '1\\n', error: '', executionTime: 5, memoryUsed: 10, cpuTime: 2, compileTime: null, createdAt: new Date(), completedAt: new Date() };
+      });
+      const detail = await request('GET', `/submissions/playground-history/${runId}`);
+      assert.equal(detail.status, 200);
+      assert.equal(detail.data.data.sourceCode, 'print(1)');
     });
 
     await t.test('not-found, conflicts, invalid login and infrastructure failures use shared errors', async t => {

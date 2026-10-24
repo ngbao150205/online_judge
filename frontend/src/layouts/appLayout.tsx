@@ -64,7 +64,7 @@ export const AppLayout: React.FC = () => {
     { path: '/', label: t('Trang chủ', 'Home'), icon: Home },
     { path: '/problems', label: t('Bài tập', 'Problems'), icon: BookOpen },
     { path: '/roadmaps', label: t('Lộ trình', 'Roadmaps'), icon: Route },
-    { path: '/history', label: t('Lịch sử nộp bài', 'Submissions'), icon: History },
+    { path: '/history', label: t('Lịch sử', 'History'), icon: History },
     { path: '/leaderboard', label: t('Bảng xếp hạng', 'Leaderboard'), icon: Trophy },
     { path: '/workspace/sandbox', label: t('Trình soạn thảo', 'Workspace'), icon: Terminal },
   ];

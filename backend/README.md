@@ -1,6 +1,6 @@
 # Backend Online Judge
 
-Backend TypeScript/Express 5 quản lý tài khoản, bài tập, lộ trình, chạy mã và lịch sử nộp bài. Mã backend dùng **ES Modules** (`type: module`, TypeScript `NodeNext`). PostgreSQL lưu dữ liệu chính qua Prisma; Redis lưu run tạm; AWS SQS nối backend với Judge Worker Go/Docker ở `../sandbox/worker`.
+Backend TypeScript/Express 5 quản lý tài khoản, bài tập, lộ trình, chạy mã và lịch sử. Mã backend dùng **ES Modules** (`type: module`, TypeScript `NodeNext`). PostgreSQL lưu dữ liệu chính, lịch sử PLAYGROUND và bài nộp; Redis lưu PROBLEM_TRIAL tạm, rate limit và heartbeat. AWS SQS nối backend với Judge Worker Go/Docker ở `../sandbox/worker`.
 
 ## 1. Kiến trúc và trách nhiệm
 
@@ -43,7 +43,7 @@ backend/
 │   ├── controllers/          Lớp HTTP mỏng
 │   ├── services/
 │   │   ├── auth/             Account, Google, password, profile
-│   │   ├── execution/        Run, owner/TTL, polling, result Redis
+│   │   ├── execution/        Playground history, Trial owner/TTL, polling/result
 │   │   └── submission/       Submit, history, detail, result, progress
 │   ├── workers/              SQS transport + entry point riêng
 │   ├── validation/           Schema request
@@ -153,10 +153,11 @@ Các đường dẫn trong bảng tương đối với `backend/`.
 | `src/services/queue-admin.service.ts` | Tạo/check queue và DLQ theo flag; đọc queue depth, redrive policy và DLQ để giám sát. |
 | `src/services/worker-monitor.service.ts` | Validate/ghi heartbeat Redis theo timestamp, bỏ message cũ, phát hiện worker offline. |
 | `src/services/judge-queue.service.ts` | Kiểm tra job queue và gửi payload SQS, dùng chung cho run/submit. |
-| `src/services/execution/run.service.ts` | Chọn resource limits và testcase public, tạo run trước gửi job; ghi lỗi nếu không hoàn tất dispatch. |
-| `src/services/execution/run-store.service.ts` | Khởi tạo owner/result bằng Redis transaction + TTL; đọc theo owner và ghi lỗi run an toàn. |
-| `src/services/execution/status.service.ts` | Định dạng kết quả polling Redis, giữ stdout/stderr và thống kê testcase. |
-| `src/services/execution/result.service.ts` | Lua cập nhật kết quả chạy thử nguyên tử, chống đếm trùng, giữ TTL và bỏ kết quả đến sau lỗi dispatch. |
+| `src/services/execution/run.service.ts` | PLAYGROUND tạo PlaygroundRun trong PostgreSQL trước khi dispatch; PROBLEM_TRIAL vẫn khởi tạo state trong Redis. |
+| `src/services/execution/run-store.service.ts` | Khởi tạo owner/result của PROBLEM_TRIAL bằng Redis transaction + TTL và đọc theo owner. |
+| `src/services/execution/status.service.ts` | Poll PlaygroundRun từ PostgreSQL hoặc PROBLEM_TRIAL từ Redis, luôn kiểm tra quyền sở hữu. |
+| `src/services/execution/result.service.ts` | Ghi kết quả PLAYGROUND vào PostgreSQL; dùng Lua tổng hợp kết quả PROBLEM_TRIAL nguyên tử trong Redis. |
+| `src/services/execution/history.service.ts` | Danh sách/chi tiết Playground theo user, phân trang và kết thúc run PENDING quá deadline. |
 | `src/services/submission/submit.service.ts` | Khóa đọc problem; ghi submission, snapshot kết quả PENDING và outbox jobs trong cùng transaction. |
 | `src/services/submission/history.service.ts` | Lịch sử theo userId, phân trang và số testcase hoàn thành/đạt/thất bại. |
 | `src/services/submission/detail.service.ts` | Chi tiết theo userId, sắp xếp kết quả và áp chính sách ẩn/public testcase. |
@@ -242,13 +243,15 @@ DELETE user/problem/category/roadmap qua API chuyển sang soft delete; tài ngu
 ### Chạy thử: PLAYGROUND / PROBLEM_TRIAL
 
 1. Route xác thực, validation ngôn ngữ/source/input/problemId.
-2. Execution service sinh `run-<UUID>`, lưu `run_owner:<runId>` và `run_result:<runId>` trong một Redis transaction với TTL mặc định 3600 giây.
+2. Execution service sinh `play-<UUID>` cho PLAYGROUND và `run-<UUID>` cho PROBLEM_TRIAL. PLAYGROUND tạo hàng `playground_runs` trong PostgreSQL với owner, source code, stdin, context bài (nếu có), trạng thái và deadline. PROBLEM_TRIAL lưu owner/trạng thái tổng hợp trong Redis với TTL mặc định 3600 giây.
 3. PLAYGROUND gửi input tùy ý; khi có problemId dùng giới hạn bài tập. PROBLEM_TRIAL chỉ lấy testcase public, mỗi testcase là một job; không có testcase public thì gửi một job PLAYGROUND.
-4. Go Worker chạy Docker và publish kết quả SQS. Backend consumer dùng Lua thêm kết quả nguyên tử, bỏ testcase trùng và tính completed/passed/failed.
-5. Polling kiểm tra owner trước khi đọc output. Run của người khác/đã hết hạn trả 404 RUN_NOT_FOUND. Không tạo Submission chính thức trong PostgreSQL.
-6. Dispatch không hoàn tất ghi SYSTEM_ERROR cho run; kết quả đến muộn không ghi đè lỗi này. Run tạm được tạo trước refactor không có owner metadata sẽ không còn đọc được; hãy chạy lại.
+4. Go Worker chạy Docker và publish kết quả SQS. Backend consumer tìm bản ghi `playground_runs` và cập nhật output/error/metrics cho PLAYGROUND; với PROBLEM_TRIAL, Lua thêm kết quả nguyên tử, bỏ testcase trùng và tính completed/passed/failed trong Redis.
+5. Polling kiểm tra owner trước khi đọc output. Run của người khác trả 404 RUN_NOT_FOUND. PLAYGROUND còn xem được sau khi tải lại trang trong **Lịch sử → Playground**; API history phân trang và trả chi tiết code/stdin/output. PROBLEM_TRIAL tự hết hạn theo Redis TTL.
+6. Dispatch lỗi được ghi thành SYSTEM_ERROR; kết quả trùng/đến muộn không ghi đè run đã kết thúc. Maintenance cũng kết thúc PLAYGROUND đang chờ quá deadline.
 
-TTL tính từ lúc khởi tạo, kết quả không sống lâu hơn owner. Run PENDING/RUNNING vẫn có hạn, tránh key tồn tại vô hạn. Trạng thái trial kết thúc là ACCEPTED khi tất cả public testcase đạt hoặc COMPLETED khi có testcase lỗi; từng testcase giữ trạng thái chi tiết.
+Chỉ PROBLEM_TRIAL có TTL Redis tính từ lúc khởi tạo; run PENDING/RUNNING vẫn có hạn để tránh key tồn tại vô hạn. Trạng thái trial kết thúc là ACCEPTED khi tất cả public testcase đạt hoặc COMPLETED khi có testcase lỗi; từng testcase giữ trạng thái chi tiết.
+
+PLAYGROUND hiện được lưu lâu dài và chưa có chính sách tự xóa/retention riêng. Khi triển khai cho nhiều người dùng, cần quyết định thời hạn lưu hoặc chức năng xóa dữ liệu theo tài khoản để kiểm soát dung lượng và dữ liệu source/stdin.
 
 ### Nộp chính thức: PROBLEM_SUBMIT
 

@@ -13,6 +13,8 @@ import { forgotPasswordService, resetPasswordService, hashResetCode } from '../d
 import { registerService } from '../dist/src/services/auth/account.service.js';
 import { deleteStudentAdminService } from '../dist/src/services/user.admin.service.js';
 import { getRunStatusService } from '../dist/src/services/execution/status.service.js';
+import { applyPlaygroundResult, applyRunResult } from '../dist/src/services/execution/result.service.js';
+import { reconcileExpiredPlaygroundRuns } from '../dist/src/services/execution/history.service.js';
 import { runResultWorker } from '../dist/src/workers/result.worker.js';
 import { aggregateOfficialStatus, mapToTestcaseStatus } from '../dist/src/utils/submission-status.js';
 
@@ -106,12 +108,43 @@ test('accepted final result updates solved progress exactly once', async t => {
 
 test('run access rejects another owner and expired metadata', async t => {
   let owner = 'other-user';
+  stub(t, prisma.playgroundRun, 'findUnique', async () => null);
   stub(t, redisClient, 'get', async key => key.startsWith('run_owner:') ? owner : JSON.stringify({ status: 'RUN_SUCCESS', output: '20' }));
   await assert.rejects(getRunStatusService(userId, `run-${userId}`), error => error.code === 'RUN_NOT_FOUND');
   owner = null;
   await assert.rejects(getRunStatusService(userId, `run-${userId}`), error => error.code === 'RUN_NOT_FOUND');
   owner = userId;
   assert.equal((await getRunStatusService(userId, `run-${userId}`)).output, '20');
+});
+
+test('Playground results update their durable database row and status is owner-scoped', async t => {
+  const runId = `play-${submissionId}`;
+  const run = { id: submissionId, userId, status: 'PENDING', output: null, error: null };
+  stub(t, prisma.playgroundRun, 'findUnique', async query => query.where.id === submissionId ? run : null);
+  stub(t, prisma.playgroundRun, 'updateMany', async query => {
+    assert.deepEqual(query.where, { id: submissionId, status: { in: ['PENDING', 'RUNNING'] } });
+    Object.assign(run, query.data);
+    return { count: 1 };
+  });
+  stub(t, redisClient, 'eval', async () => { throw new Error('Playground result must not use Redis'); });
+
+  assert.equal(await applyPlaygroundResult({ submissionId: runId, status: 'RUN_SUCCESS', output: '20\\n', executionTime: 12 }), 'ack');
+  assert.equal(run.status, 'RUN_SUCCESS');
+  assert.equal(run.output, '20\\n');
+  assert.ok(run.completedAt instanceof Date);
+  assert.equal((await getRunStatusService(userId, runId)).stdout, '20\\n');
+  await assert.rejects(getRunStatusService('other-user', runId), error => error.code === 'RUN_NOT_FOUND');
+});
+
+test('expired pending Playground rows are finalized by maintenance', async t => {
+  const now = new Date('2026-10-23T00:00:00.000Z');
+  stub(t, prisma.playgroundRun, 'updateMany', async query => {
+    assert.deepEqual(query.where, { status: { in: ['PENDING', 'RUNNING'] }, deadlineAt: { lt: now } });
+    assert.equal(query.data.status, 'SYSTEM_ERROR');
+    assert.equal(query.data.completedAt, now);
+    return { count: 1 };
+  });
+  assert.equal((await reconcileExpiredPlaygroundRuns(now)).count, 1);
 });
 
 test('roadmap unlock requires all preceding problems to be solved', async t => {
